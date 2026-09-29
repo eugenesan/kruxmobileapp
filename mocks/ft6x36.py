@@ -62,7 +62,15 @@ class FT6X36:
         self.event_flag = False  # Always clean event flag
         return flag
 
-    def threshold(self):
+    def threshold(self, value=None):
+        # Accepts the value the way the real driver does
+        # (krux/touchscreens/ft6x36.py: def threshold(self, value)). Without the
+        # parameter, leaving the Touch Threshold settings screen raised
+        #   TypeError: FT6X36.threshold() takes 1 positional argument but 2 were given
+        # because settings_page._touch_threshold_exit_check calls
+        # touch_driver.threshold(Settings().hardware.touch.threshold). There is no
+        # FT6X36 on a phone, so the value is ignored, but the call has to be
+        # accepted or the screen errors out.
         pass
 
 touch_control = FT6X36()
