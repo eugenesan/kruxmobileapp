@@ -45,7 +45,11 @@ version = 26.06.0
 
 # (list) Application requirements
 # comma separated e.g. requirements = sqlite3,kivy
-requirements = python3,kivy,pycryptodome,camera4kivy,gestures4kivy,pyzbar==0.1.9,libzbar,pillow,pyqrcode,numpy
+# numpy is gone: mocks/sensor.py computes the per-channel standard
+# deviations for camera entropy with Pillow, which is already required
+# here. numpy had no Android wheel on any Python and cross-compiles
+# through a meson build that could not be made to work.
+requirements = python3,kivy,pycryptodome,camera4kivy,gestures4kivy,pyzbar==0.1.9,libzbar,pillow,pyqrcode
 
 # (str) Custom source folders for requirements
 # Sets custom source for any requirements with recipes
@@ -269,6 +273,8 @@ android.api = 32
 #android.copy_libs = 1
 
 # (str) The Android arch to build for, choices: armeabi-v7a, arm64-v8a, x86, x86_64
+# NOTE: buildozer does not strip inline comments, so keep notes on their own
+# line -- an inline comment silently becomes part of the value.
 android.archs = arm64-v8a,armeabi-v7a
 
 # (int) overrides automatic versionCode computation (used in build.gradle)
@@ -304,6 +310,12 @@ android.allow_backup = True
 #p4a.branch = master
 
 # (str) python-for-android specific commit to use, defaults to HEAD, must be within p4a.branch
+# NOTE: do not pin p4a to a pre-3.14 revision. p4a at those commits builds its
+# own host CPython (3.11.13), and that interpreter is broken in this image:
+# the install step never creates lib/python3.11/lib-dynload, so `import math`
+# fails and the interpreter segfaults on startup. Every PEP 517 build then
+# fails at `import math`. At HEAD the host interpreter is the image's own
+# working Python 3.14.
 #p4a.commit = HEAD
 
 # (str) python-for-android git clone directory (if empty, it will be automatically cloned from github)
