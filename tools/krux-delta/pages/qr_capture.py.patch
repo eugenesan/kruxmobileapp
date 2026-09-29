@@ -1,0 +1,113 @@
+--- a/pages/qr_capture.py
++++ b/pages/qr_capture.py
+@@ -42,9 +42,8 @@
+     def __init__(self, ctx):
+         super().__init__(ctx, None)
+         self.ctx = ctx
+-        self.progress_bar_offset_y = {"cube": 225, "m5stickv": 210, "amigo": 380}.get(
+-            board.config["type"], 305
+-        )
++        # Android custom - 80% 
++        self.progress_bar_offset_y = (self.ctx.display.height() * 8) // 10
+ 
+     def light_control(self):
+         """Controls the light based on the user input"""
+@@ -81,12 +80,12 @@
+             FONT_HEIGHT,
+             theme.bg_color,
+         )
+-        self.ctx.display.to_landscape()
++        # self.ctx.display.to_landscape() # Android custom
+         self.ctx.input.reset_ios_state()
+ 
+     def update_progress_ur(self, parser, color):
+         """Fill the progress bar according to FORMAT_UR"""
+-        self.ctx.display.to_portrait()
++        # self.ctx.display.to_portrait()  # Android custom
+ 
+         filled = (
+             self.ctx.display.width() * parser.parsed_count()
+@@ -95,11 +94,11 @@
+             0, self.progress_bar_offset_y, filled, PROGRESS_BAR_HEIGHT, color
+         )
+ 
+-        self.ctx.display.to_landscape()
++        # self.ctx.display.to_landscape()  # Android custom
+ 
+     def update_progress_other(self, parser, index, previous_index):
+         """Updates the progress bar for pMofN and BBQR"""
+-        self.ctx.display.to_portrait()
++        # self.ctx.display.to_portrait()  # Android custom
+ 
+         block_size = self.ctx.display.width() / parser.total_count()
+         fill_size = int(block_size * (index + 1)) - int(block_size * index)
+@@ -122,7 +121,7 @@
+                 theme.fg_color,
+             )
+ 
+-        self.ctx.display.to_landscape()
++        # self.ctx.display.to_landscape()  # Android custom
+ 
+     def qr_capture_loop(self):
+         """Captures either singular or animated QRs and parses their contents"""
+@@ -139,20 +138,17 @@
+ 
+         # Flush events occurred while loading camera
+         self.ctx.input.reset_ios_state()
+-        start_time = time.ticks_ms()
+-        self.ctx.display.clear()
+-        offset_y = (
+-            MINIMAL_PADDING if not kboard.is_amigo else BOTTOM_LINE - FONT_HEIGHT * 2
+-        )
+-        title_lines = self.ctx.display.draw_hcentered_text(
+-            t("Press PAGE to toggle mode"), offset_y
+-        )
+-        self.ctx.display.to_landscape()
+-
+-        # Cache end time for message display to avoid repeated addition
+-        message_end_time = start_time + MESSAGE_DISPLAY_PERIOD
+-        first_frame = True
+ 
++        # Android Custom
++        # start_time = time.ticks_ms()
++        # self.ctx.display.clear()
++        # offset_y = (
++        #     MINIMAL_PADDING if not kboard.is_amigo else BOTTOM_LINE - FONT_HEIGHT * 2
++        # )
++        # title_lines = self.ctx.display.draw_hcentered_text(
++        #     t("Press PAGE to toggle mode"), offset_y
++        # )
++        # self.ctx.display.to_landscape()
+         while True:
+             wdt.feed()
+ 
+@@ -189,15 +185,13 @@
+                 ur_highlighted = False
+ 
+             img = self.ctx.camera.snapshot()
+-            if time.ticks_ms() < message_end_time:
+-                self.ctx.display.render_image(img, title_lines=title_lines)
+-            else:
+-                self.ctx.display.render_image(img)
++            # Android Custom
++            self.ctx.display.render_image(img)
+ 
+-            res = img.find_qrcodes(find_inverted=first_frame)
++            res = img.find_qrcodes()
+             if res:
+-                first_frame = False
+-                new_part = parser.parse(res[0].payload())
++                data = res[0].payload()
++                new_part = parser.parse(data)
+ 
+                 if (
+                     parser.format == FORMAT_UR
+@@ -212,7 +206,7 @@
+         self.ctx.camera.stop_sensor()
+         if self.ctx.light:
+             self.ctx.light.turn_off()
+-        self.ctx.display.to_portrait()
++        # self.ctx.display.to_portrait()  # Android custom
+ 
+         if parser.is_complete():
+             return qr_str_to_bytes(parser.result()), parser.format

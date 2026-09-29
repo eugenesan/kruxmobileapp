@@ -1,0 +1,70 @@
+--- a/pages/capture_entropy.py
++++ b/pages/capture_entropy.py
+@@ -105,7 +105,8 @@
+                     0,
+                     self.y_label_offset,
+                     self.ctx.display.width(),
+-                    FONT_HEIGHT,
++                    # Custom for Android:
++                    FONT_HEIGHT + FONT_HEIGHT // 3,
+                     theme.bg_color,
+                 )
+                 if entropy_level == GOOD_ENTROPY:
+@@ -122,7 +123,7 @@
+                         self.y_label_offset,
+                         theme.error_color,
+                     )
+-                self.ctx.display.to_landscape()
++                # self.ctx.display.to_landscape() # Android custom
+ 
+         elif self.measurement_machine_state == 1:
+             self.image_stats_vector[0] = self.image_stats.l_stdev()
+@@ -145,7 +146,7 @@
+ 
+         self.ctx.display.clear()
+         self.ctx.display.draw_centered_text(t("TOUCH or ENTER to capture"))
+-        self.ctx.display.to_landscape()
++        # self.ctx.display.to_landscape() # Android custom
+         self.ctx.camera.initialize_run(mode=ENTROPY_MODE)
+         self.ctx.display.clear()
+ 
+@@ -165,7 +166,7 @@
+             self.entropy_measurement_update(img)
+             self.ctx.display.render_image(img)
+ 
+-        self.ctx.display.to_portrait()
++        # self.ctx.display.to_portrait()  # Android custom
+         gc.collect()
+         sensor.run(0)
+ 
+@@ -182,22 +183,21 @@
+         img_pixels = img.width() * img.height()
+         del img
+ 
++        # Android custom
+         # Calculate Shannon's entropy:
+-        shannon_16b = shannon.entropy_img16b(img_bytes)
+-        shannon_16b_total = shannon_16b * img_pixels
+-
++        # Android images calculate Shannon's over 24 bits
++        shannon_24b = shannon.entropy_img24b(img_bytes)
++        shannon_24b_total = shannon_24b * img_pixels
+         entropy_msg = t("Shannon's entropy:") + "\n"
+-        entropy_msg += (t("%s bits") + "\n") % generate_thousands_separator(
+-            int(shannon_16b_total)
+-        )
+-        entropy_msg += (t("(%s bits/px)") + "\n\n") % replace_decimal_separator(
+-            "%.2g" % shannon_16b
++        entropy_msg += (t("%d bits (%s bits/px)") + "\n\n") % (
++            int(shannon_24b_total),
++            replace_decimal_separator("%.2g" % shannon_24b),
+         )
+         entropy_msg += "%s %s" % (t("Pixels deviation index:"), str(self.stdev_index))
+         self.ctx.display.clear()
+         self.ctx.input.reset_ios_state()
+         if (
+-            shannon_16b < INSUFFICIENT_SHANNONS_ENTROPY_TH
++            shannon_24b < INSUFFICIENT_SHANNONS_ENTROPY_TH
+             or self.stdev_index < INSUFFICIENT_VARIANCE_TH
+         ):
+             error_msg = t("Insufficient entropy!")

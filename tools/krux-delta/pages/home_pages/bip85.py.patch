@@ -1,0 +1,26 @@
+--- a/pages/home_pages/bip85.py
++++ b/pages/home_pages/bip85.py
+@@ -139,6 +139,7 @@
+             BIP_PWD_APP_INDEX,
+             [pwd_len, child_index],
+         )
++        # Custom for Android
+         password = base_encode(entropy, 64)
+         password = password[:pwd_len]
+         info = password
+@@ -151,12 +152,9 @@
+                     lambda: self._base64_password_qr(password, t("Base64 Password")),
+                 ),
+                 (
+-                    t("Save to SD card"),
+-                    (
+-                        None
+-                        if not self.has_sd_card()
+-                        else lambda: self._save_b64_pwd_to_sd(info)
+-                    ),
++                    # Custom for Android
++                    "Copy to Clipboard",
++                    lambda: self.copy_to_clipboard(password),
+                 ),
+             ]
+             self.ctx.display.clear()

@@ -1,0 +1,12 @@
+--- a/qr.py
++++ b/qr.py
+@@ -322,6 +322,9 @@
+     # Given qr_size = 17 + 4 * version + 2 * frame_size
+     max_width -= 2  # Subtract frame width
+     qr_version = (max_width - 17) // 4
++    # Android custom
++    qr_version = min(qr_version, 10)  # Avoid too dense QR codes in high DPI screens
++    
+     if encoding == "alphanumeric":
+         capacity_list = QR_CAPACITY_ALPHANUMERIC
+     else:

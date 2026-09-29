@@ -1,0 +1,72 @@
+--- a/touch.py
++++ b/touch.py
+@@ -66,12 +66,14 @@
+             self.touch_driver = touch_control
+             self.touch_driver.activate(irq_pin, res_pin)
+         else:
+-            from .touchscreens.ft6x36 import touch_control
++            # Android Custom
++            from krux.touchscreens.ft6x36 import touch_control
+ 
+             self.touch_driver = touch_control
+             self.touch_driver.activate_irq(irq_pin)
+ 
+-        self.touch_driver.threshold(Settings().hardware.touch.threshold)
++        # Custom for Android
++        #self.touch_driver.threshold(Settings().hardware.touch.threshold)
+ 
+     def clear_regions(self):
+         """Remove previously stored buttons map"""
+@@ -80,21 +82,27 @@
+ 
+     def add_y_delimiter(self, region):
+         """Adds a y button delimiter to be mapped as a array by touchscreen"""
+-        if region > self.width:
+-            raise ValueError("Touch region added outside display area")
++        # Custom for Android
++        # if region > self.width:
++        #     raise ValueError("Touch region added outside display area")
+         self.y_regions.append(region)
+ 
+     def add_x_delimiter(self, region):
+         """Adds a x button delimiter to be mapped as a array by touchscreen"""
+-        if region > self.height:
+-            raise ValueError("Touch region added outside display area")
++        # Custom for Android
++        # if region > self.height:
++        #     raise ValueError("Touch region added outside display area")
+         self.x_regions.append(region)
+ 
+     def valid_position(self, data):
+         """Checks if touch position is within buttons area"""
+ 
+-        if Settings().is_flipped_orientation():
+-            data = (self.height - data[0], self.width - data[1])
++        # Custom for Android
++        # if (
++        #     hasattr(Settings().hardware.display, "flipped_orientation")
++        #     and Settings().hardware.display.flipped_orientation
++        # ):
++        #     data = (self.height - data[0], self.width - data[1])
+ 
+         if self.x_regions and data[0] < self.x_regions[0]:
+             return False
+@@ -187,12 +195,12 @@
+     def _store_points(self, data):
+         """Store pressed points and calculare an average pressed point"""
+ 
+-        if Settings().is_flipped_orientation():
+-            new_y = max(0, self.height - data[0])
+-            new_y = min(new_y, self.height - 1)
+-            new_x = max(0, self.width - data[1])
+-            new_x = min(new_x, self.width - 1)
+-            data = (new_y, new_x)
++        # Custom for Android
++        # if (
++        #     hasattr(Settings().hardware.display, "flipped_orientation")
++        #     and Settings().hardware.display.flipped_orientation
++        # ):
++        #     data = (self.height - data[0], self.width - data[1])
+ 
+         if self.state == IDLE:
+             self.state = PRESSED

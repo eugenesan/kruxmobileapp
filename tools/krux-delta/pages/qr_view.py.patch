@@ -1,0 +1,48 @@
+--- a/pages/qr_view.py
++++ b/pages/qr_view.py
+@@ -54,6 +54,10 @@
+         super().__init__(ctx, None)
+         self.ctx = ctx
+         self.binary = binary
++
++        # Custom for Android
++        self.data = data
++
+         if data:
+             self.code = qrcode.encode(data)  # pylint: disable=E1101
+             self.title = title
+@@ -527,12 +531,13 @@
+                         self.qr_foreground = WHITE
+                     else:
+                         self.qr_foreground = None
++                # Custom for Android
++                def copy_to_clipboard():
++                    self.copy_to_clipboard(self.data)
++                    return MENU_CONTINUE
+ 
+                 self.draw_grided_qr(mode)
+-                if self.ctx.display.height() > self.ctx.display.width() and mode in (
+-                    STANDARD_MODE,
+-                    TRANSCRIBE_MODE,
+-                ):
++                if self.ctx.display.height() > self.ctx.display.width():
+                     y_offset = self.ctx.display.qr_offset() + DEFAULT_PADDING
+                     self.ctx.display.draw_hcentered_text(
+                         label,
+@@ -568,14 +573,8 @@
+             qr_menu = [
+                 (t("Return to QR Viewer"), lambda: None),
+                 (t("Toggle Brightness"), toggle_brightness),
+-                (
+-                    t("Save QR Image to SD Card"),
+-                    (
+-                        self.save_qr_image_menu
+-                        if allow_export and self.has_sd_card()
+-                        else None
+-                    ),
+-                ),
++                # Custom for Android
++                ("Copy to Clipboard", copy_to_clipboard),
+                 (t("Print as QR"), printer_func),
+             ]
+             submenu = Menu(self.ctx, qr_menu, back_label=t("Back to Menu"))
