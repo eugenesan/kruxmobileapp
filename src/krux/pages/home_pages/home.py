@@ -34,7 +34,7 @@ from ...display import BOTTOM_PROMPT_LINE
 from ...qr import FORMAT_NONE, FORMAT_PMOFN
 from ...krux_settings import t, Settings
 from ...format import replace_decimal_separator
-from ...key import TYPE_SINGLESIG, TYPE_SILENT_PAYMENT
+from ...key import TYPE_SINGLESIG
 from ...kboard import kboard
 
 
@@ -353,9 +353,9 @@ class Home(Page):
 
     def _pre_load_psbt_warn(self):
         """Warns if descriptor is not loaded and wallet is multisig or miniscript"""
-        if not self.ctx.wallet.is_loaded() and self.ctx.wallet.key.policy_type not in (
-            TYPE_SINGLESIG,
-            TYPE_SILENT_PAYMENT,
+        if (
+            not self.ctx.wallet.is_loaded()
+            and self.ctx.wallet.key.policy_type != TYPE_SINGLESIG
         ):
             self.ctx.display.draw_centered_text(
                 t("Warning:")
@@ -392,9 +392,9 @@ class Home(Page):
 
         # Show the policy for multisig and miniscript PSBTs
         # in case the wallet descriptor is not loaded
-        if not self.ctx.wallet.is_loaded() and self.ctx.wallet.key.policy_type not in (
-            TYPE_SINGLESIG,
-            TYPE_SILENT_PAYMENT,
+        if (
+            not self.ctx.wallet.is_loaded()
+            and not self.ctx.wallet.key.policy_type == TYPE_SINGLESIG
         ):
             policy_str = signer.psbt_policy_string()
             self.ctx.display.clear()
@@ -414,23 +414,22 @@ class Home(Page):
 
         return True
 
-    def _sp_warn(self):
-        """Warns when SP outputs are present so the user verifies sp1/tsp1 addresses.
+    def _unverified_amounts_psbt_warn(self, signer):
+        """Warn when input amounts are not backed by their previous transactions"""
+        if signer.unverified_input_amounts():
+            self.ctx.display.clear()
+            self.ctx.display.draw_centered_text(
+                t("Warning:")
+                + " "
+                + t("Unverified input amounts!")
+                + "\n"
+                + t("The fee shown may be lower than the real fee."),
+                highlight_prefix=":",
+            )
 
-        The on-chain destination for an SP output is a derived P2TR that the
-        recipient alone can recognize. The user must verify the sp1/tsp1 address
-        against what the recipient communicated — never the derived P2TR.
-        """
-        self.ctx.display.clear()
-        self.ctx.display.draw_centered_text(
-            t("Warning:")
-            + " "
-            + t("PSBT contains Silent Payment outputs.")
-            + "\n\n"
-            + t("Verify the sp1/tsp1 address with the recipient."),
-            highlight_prefix=":",
-        )
-        return self.prompt(t("Proceed?"), BOTTOM_PROMPT_LINE)
+            return self.prompt(t("Proceed?"), BOTTOM_PROMPT_LINE)
+
+        return True
 
     def _fees_psbt_warn(self, fee_percent):
         """Warn if fees greater than 10% of what is spent"""
@@ -531,10 +530,10 @@ class Home(Page):
         self.ctx.display.draw_centered_text(t("Processing…"))
         outputs, fee_percent = signer.outputs()
 
-        if not self._fees_psbt_warn(fee_percent):
+        if not self._unverified_amounts_psbt_warn(signer):
             return MENU_CONTINUE
 
-        if signer.has_sp_outputs() and not self._sp_warn():
+        if not self._fees_psbt_warn(fee_percent):
             return MENU_CONTINUE
 
         self._display_transaction_for_review(outputs)

@@ -39,14 +39,12 @@ from ..key import (
     P2WPKH,
     P2WSH,
     P2SH,
-    P2TR,
     SINGLESIG_SCRIPT_MAP,
     MULTISIG_SCRIPT_MAP,
     MINISCRIPT_SCRIPT_MAP,
     TYPE_SINGLESIG,
     TYPE_MULTISIG,
     TYPE_MINISCRIPT,
-    TYPE_SILENT_PAYMENT,
     POLICY_TYPE_IDS,
     NAME_MULTISIG,
 )
@@ -202,6 +200,38 @@ class Login(MnemonicLoader):
                 return self._load_key_from_words(entropy_mnemonic.split(), new=True)
         return MENU_CONTINUE
 
+    def _wallet_info_menu(self, key, wallet_info, network_name, menu_items):
+        """Draws the wallet info box and returns a menu placed below it"""
+        from ..themes import theme
+        from .utils import Utils
+
+        self.ctx.display.clear()
+        menu = Menu(
+            self.ctx,
+            menu_items,
+            offset=(
+                self.ctx.display.draw_hcentered_text(wallet_info, info_box=True)
+                * FONT_HEIGHT
+                + DEFAULT_PADDING
+            ),
+        )
+
+        # draw fingerprint with highlight color
+        self.ctx.display.draw_hcentered_text(
+            key.fingerprint_hex_str(True),
+            color=theme.highlight_color,
+            bg_color=theme.info_bg_color,
+        )
+
+        # draw network with highlight color
+        self.ctx.display.draw_hcentered_text(
+            network_name,
+            DEFAULT_PADDING + FONT_HEIGHT,
+            color=Utils.get_network_color(network_name),
+            bg_color=theme.info_bg_color,
+        )
+        return menu
+
     def _load_key_from_words(self, words, charset=LETTERS, new=False):
         mnemonic = " ".join(words)
 
@@ -256,13 +286,9 @@ class Login(MnemonicLoader):
                 Settings().wallet.script_type, P2WSH
             )
 
-        if policy_type == TYPE_SILENT_PAYMENT:
-            script_type = P2TR
-
         derivation_path = ""
 
         from ..wallet import Wallet
-        from ..themes import theme
         from .utils import Utils
 
         utils = Utils(self.ctx)
@@ -289,34 +315,22 @@ class Login(MnemonicLoader):
                 else t("Passphrase") + " (%d): *…*" % len(passphrase)
             )
 
-            self.ctx.display.clear()
-            submenu = Menu(
-                self.ctx,
-                [
-                    (t("Load Wallet"), lambda: None),
-                    (t("Passphrase"), lambda: None),
-                    (t("Customize"), lambda: None),
-                ],
-                offset=(
-                    self.ctx.display.draw_hcentered_text(wallet_info, info_box=True)
-                    * FONT_HEIGHT
-                    + DEFAULT_PADDING
-                ),
-            )
-
-            # draw fingerprint with highlight color
-            self.ctx.display.draw_hcentered_text(
-                key.fingerprint_hex_str(True),
-                color=theme.highlight_color,
-                bg_color=theme.info_bg_color,
-            )
-
-            # draw network with highlight color
-            self.ctx.display.draw_hcentered_text(
+            submenu = self._wallet_info_menu(
+                key,
+                wallet_info,
                 network_name,
-                DEFAULT_PADDING + FONT_HEIGHT,
-                color=Utils.get_network_color(network_name),
-                bg_color=theme.info_bg_color,
+                (
+                    [
+                        (t("Continue"), lambda: None),
+                        (t("Wallet Options"), lambda: None),
+                    ]
+                    if new
+                    else [
+                        (t("Load Wallet"), lambda: None),
+                        (t("Passphrase"), lambda: None),
+                        (t("Customize"), lambda: None),
+                    ]
+                ),
             )
 
             index, _ = submenu.run_loop()
@@ -324,8 +338,25 @@ class Login(MnemonicLoader):
                 if self.prompt(t("Are you sure?"), self.ctx.display.height() // 2):
                     del key
                     return MENU_CONTINUE
+                continue
             if index == 0:
                 break
+            if new and index == 1:
+                submenu = self._wallet_info_menu(
+                    key,
+                    wallet_info,
+                    network_name,
+                    [
+                        (t("Passphrase"), lambda: None),
+                        (t("Customize"), lambda: None),
+                    ],
+                )
+
+                index, _ = submenu.run_loop()
+                if index == submenu.back_index:
+                    continue
+                # shift onto the Passphrase and Customize arms of the main menu
+                index += 1
             if index == 1:
                 from .wallet_settings import PassphraseEditor
 

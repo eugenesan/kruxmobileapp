@@ -39,15 +39,12 @@ from ..key import (
     SINGLESIG_SCRIPT_PURPOSE,
     MULTISIG_SCRIPT_PURPOSE,
     MINISCRIPT_PURPOSE,
-    DER_SILENT_PAYMENT,
     TYPE_SINGLESIG,
     TYPE_MULTISIG,
     TYPE_MINISCRIPT,
-    TYPE_SILENT_PAYMENT,
     NAME_SINGLE_SIG,
     NAME_MULTISIG,
     NAME_MINISCRIPT,
-    NAME_SILENT_PAYMENT,
 )
 
 from ..settings import (
@@ -226,10 +223,7 @@ class WalletSettings(Page):
                 [
                     (t("Network"), lambda: None),
                     (t("Policy Type"), lambda: None),
-                    (
-                        t("Script Type"),
-                        None if policy_type == TYPE_SILENT_PAYMENT else lambda: None,
-                    ),
+                    (t("Script Type"), lambda: None),
                     (account_txt, lambda: None),
                 ],
                 offset=info_len * FONT_HEIGHT + DEFAULT_PADDING,
@@ -278,9 +272,6 @@ class WalletSettings(Page):
                         # If is miniscript, pick P2WSH or P2TR
                         script_type = self._miniscript_type()
                         script_type = P2WSH if script_type is None else script_type
-
-                    elif policy_type == TYPE_SILENT_PAYMENT:
-                        script_type = P2TR
 
             elif index == 2:
                 if policy_type == TYPE_MINISCRIPT:
@@ -331,7 +322,6 @@ class WalletSettings(Page):
                 (NAME_SINGLE_SIG, lambda: MENU_EXIT),
                 (NAME_MULTISIG, lambda: MENU_EXIT),
                 (NAME_MINISCRIPT + " (Experimental)", lambda: MENU_EXIT),
-                (NAME_SILENT_PAYMENT + " (Experimental)", lambda: MENU_EXIT),
             ],
             disable_statusbar=True,
         )
@@ -396,10 +386,6 @@ class WalletSettings(Page):
         # to maintain compatibility with those wallets, use m/45h.
         if policy_type == TYPE_MULTISIG and script_type == P2SH:
             return P2SH_DEFAULT_DERIVATION
-
-        if policy_type == TYPE_SILENT_PAYMENT:
-            coin = 0 if network == NETWORKS[MAIN_TXT] else 1
-            return DER_SILENT_PAYMENT % (coin, account)
 
         derivation_path = "m/"
 
