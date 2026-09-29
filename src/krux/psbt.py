@@ -28,6 +28,12 @@ from .settings import THIN_SPACE, ELLIPSIS
 from .qr import FORMAT_PMOFN, FORMAT_BBQR
 from .key import Key, P2SH, P2SH_P2WPKH, P2SH_P2WSH, P2WPKH, P2WSH, P2TR
 from .sats_vb import SatsVB
+from .sighash import (
+    screen_sighash_type,
+    sighash_label,
+    sighash_type,
+    sign_with,
+)
 
 # PSBT Output Types:
 CHANGE = 0
@@ -438,12 +444,20 @@ class PSBTSigner:
         )
 
         messages = []
+        # named on the same screen as the amounts it commits to; omitted where
+        # we will refuse to sign
+        shown_sighash, _ = self.screen_sighash_type()
+        sighash_str = (
+            "\n\n" + sighash_label(shown_sighash) if shown_sighash is not None else ""
+        )
+
         # first screen - resume
         messages.append(
             resume_inputs_str
             + resume_spend_str
             + resume_self_or_change_str
             + resume_fee_str
+            + sighash_str
         )
 
         # sequence of spend
@@ -457,29 +471,18 @@ class PSBTSigner:
 
         return messages, fee_percent
 
-    def check_sighash(self):
-        """Check that all inputs use SIGHASH_ALL (or DEFAULT for taproot).
+    def screen_sighash_type(self):
+        """See sighash.screen_sighash_type."""
+        return screen_sighash_type(self.psbt, self.wallet.key)
 
-        Refuse to sign if any input requests a non-standard sighash type
-        (SIGHASH_NONE, SIGHASH_SINGLE, ANYONECANPAY), as these can allow
-        an attacker to redirect funds after signing.
-        """
-        from embit.transaction import SIGHASH
-
-        safe_sighash = {None, SIGHASH.DEFAULT, SIGHASH.ALL}
-        for i, inp in enumerate(self.psbt.inputs):
-            if inp.sighash_type not in safe_sighash:
-                sighash_val = inp.sighash_type
-                raise ValueError(
-                    "Input %d has non-standard sighash type: 0x%02x" % (i, sighash_val)
-                )
+    def sighash_type(self):
+        """The hash type this PSBT will be signed with"""
+        return sighash_type(self.psbt)
 
     def add_signatures(self):
-        """Add signatures to PSBT"""
-        self.check_sighash()
-        sigs_added = self.psbt.sign_with(self.wallet.key.root)
-        if sigs_added == 0:
-            raise ValueError("cannot sign")
+        """Raises PSBTRefusedError or PSBTSignError; signs nothing in
+        either case."""
+        sign_with(self.psbt, self.wallet.key)
 
     def fill_zero_fingerprint(self):
         """Fix for zeroes in fingerprint that happen when user imports the wallet
@@ -521,8 +524,13 @@ class PSBTSigner:
         if not trim:
             return
 
-        trimmed_psbt = PSBT(self.psbt.tx)
-        for i, inp in enumerate(self.psbt.inputs):
+        self.psbt = self.trim(self.psbt)
+
+    @staticmethod
+    def trim(psbt):
+        """Keeps only the fields a finalizer or coordinator still needs"""
+        trimmed_psbt = PSBT(psbt.tx)
+        for i, inp in enumerate(psbt.inputs):
             # Copy the final_scriptwitness if present
             if inp.final_scriptwitness:
                 trimmed_psbt.inputs[i].final_scriptwitness = inp.final_scriptwitness
@@ -530,6 +538,10 @@ class PSBTSigner:
             # Copy any partial signatures
             if inp.partial_sigs:
                 trimmed_psbt.inputs[i].partial_sigs = inp.partial_sigs
+
+            # travels with an input that is not finished: a co-signer needs it to
+            # know the opt-in was asked for
+            trimmed_psbt.inputs[i].sighash_type = inp.sighash_type
 
             # Preserve witness UTXO if present
             if inp.witness_utxo:
@@ -555,7 +567,7 @@ class PSBTSigner:
             if inp.taproot_sigs:
                 trimmed_psbt.inputs[i].taproot_sigs = inp.taproot_sigs
 
-        self.psbt = trimmed_psbt
+        return trimmed_psbt
 
     def psbt_qr(self):
         """Returns the psbt in the same form it was read as a QR code"""

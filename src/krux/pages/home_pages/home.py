@@ -20,7 +20,6 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 # THE SOFTWARE.
 
-import board  # Android
 import gc
 from .. import (
     Page,
@@ -36,6 +35,8 @@ from ...krux_settings import t, Settings
 from ...format import replace_decimal_separator
 from ...key import TYPE_SINGLESIG
 from ...kboard import kboard
+import board  # Android
+from ...themes import theme
 
 
 class Home(Page):
@@ -43,7 +44,9 @@ class Home(Page):
 
     def __init__(self, ctx):
         shtn_reboot_label = (  # Android Custom
-            t("Shutdown") if ctx.power_manager.has_battery() or board.config["type"] == "android" else t("Reboot")
+            t("Shutdown")
+            if ctx.power_manager.has_battery() or board.config["type"] == "android"
+            else t("Reboot")
         )
         super().__init__(
             ctx,
@@ -273,11 +276,10 @@ class Home(Page):
         del submenu
         gc.collect()
 
-        self.ctx.display.clear()
-        self.ctx.display.draw_centered_text(t("Signing…"))
-
         if index == 1:  # Sign to QR code
-            signer.sign()
+            if not self._sign_psbt(signer):
+                return MENU_CONTINUE
+
             signed_psbt, qr_format = signer.psbt_qr()
 
             # memory management
@@ -298,7 +300,8 @@ class Home(Page):
                     return MENU_CONTINUE
 
         # index == 2: Sign to SD card
-        signer.sign(trim=False)
+        if not self._sign_psbt(signer, trim=False):
+            return MENU_CONTINUE
         psbt_filename = self._format_psbt_file_extension(psbt_filename)
         gc.collect()
 
@@ -323,6 +326,70 @@ class Home(Page):
                 self.flash_error(t("SD card not detected."))
 
         return MENU_CONTINUE
+
+    def _sign_psbt(self, signer, trim=True):
+        """Signs. Returns False when nothing was signed, in which case the
+        caller goes back to the menu: no PSBT is emitted, nothing is sent."""
+        from ...sighash import PSBTRefusedError, PSBTSignError
+
+        self.ctx.display.clear()
+        self.ctx.display.draw_centered_text(t("Signing…"))
+
+        try:
+            signer.sign(trim=trim)
+        except PSBTRefusedError as e:
+            self._display_unsignable_sighash(e.reason)
+            return False
+        except PSBTSignError:
+            # a property of the transaction, not of the seed: no point walking
+            # the user through every seed only to fail each time
+            self._display_cannot_sign(
+                t(
+                    "This transaction could not be signed. "
+                    "Nothing was signed and nothing was sent."
+                )
+            )
+            return False
+        return True
+
+    def _display_unsignable_sighash(self, reason):
+        """Which of the two situations stops us signing. One leaves the
+        transaction signed in part, the other signs every input with types no
+        label describes, so the user is not told the same thing either way."""
+        from ...sighash import REFUSED_MIXED
+
+        if reason == REFUSED_MIXED:
+            text = t(
+                "This transaction's inputs ask to be signed in different ways, "
+                "so this device cannot tell you what it would sign."
+            )
+        else:
+            text = t(
+                "This transaction asks for a signature type this device does not "
+                "sign. Signing it would only sign part of it."
+            )
+        self._display_cannot_sign(text)
+
+    def _display_cannot_sign(self, text):
+        """One screen saying that nothing was signed, and why"""
+        self.ctx.display.clear()
+        self.ctx.display.draw_centered_text(
+            t("Warning:") + " " + t("Cannot sign") + "\n\n" + text,
+            theme.error_color,
+            highlight_prefix=":",
+        )
+        self.ctx.input.wait_for_button()
+
+    def _sighash_psbt_warn(self, signer):
+        """Refuses a transaction whose inputs do not reduce to one hash
+        type. Checked with the other PSBT warnings rather than after the
+        review screens: no point walking the user through the amounts of a
+        transaction that will not be signed."""
+        shown_sighash, refused_because = signer.screen_sighash_type()
+        if shown_sighash is not None:
+            return True
+        self._display_unsignable_sighash(refused_because)
+        return False
 
     def _format_psbt_file_extension(self, psbt_filename=""):
         """Formats the PSBT filename"""
@@ -524,6 +591,9 @@ class Home(Page):
 
         # post load warns
         if not self._post_load_psbt_warn(signer):
+            return MENU_CONTINUE
+
+        if not self._sighash_psbt_warn(signer):
             return MENU_CONTINUE
 
         self.ctx.display.clear()
