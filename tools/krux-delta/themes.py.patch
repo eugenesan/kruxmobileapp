@@ -1,0 +1,50 @@
+--- a/themes.py
++++ b/themes.py
+@@ -29,19 +29,17 @@
+ LIGHTBLACK = 0x0842
+ DARKGREY = 0xEF7B
+ GREY = 0x14A5
++LIGHTGREY = 0x38C6
+ DARKWHITE = 0x1CE7
+ WHITE = 0xFFFF
+ GREEN = 0xE007
+ DARKGREEN = 0x8005
+-DARKERGREEN = 0x4004
+ RED = 0x00F8
+-DARKERRED = 0x00C0
+ LIGHT_PINK = 0xDFFC
+ PINK = 0x1FF8
+-DARKPINK = 0x1AD0
++PURPLE = 0x0F78
+ ORANGE = 0x20FD
+ DARKORANGE = 0xA0CA
+-DARKERORANGE = 0xE0B2
+ YELLOW = 0x85F6
+ BLUE = 0xF800
+ LIGHTBLUE = 0xBD0E
+@@ -69,13 +67,13 @@
+         "background": WHITE,
+         "info_background": DARKWHITE,
+         "foreground": BLACK,
+-        "frame": DARKGREY,
++        "frame": LIGHTGREY,
+         "disabled": DARKWHITE,
+-        "go": DARKERGREEN,
++        "go": DARKGREEN,
+         "esc_no": RED,
+         "del": DARKORANGE,
+         "toggle": BLUE,
+-        "error": DARKERRED,
++        "error": RED,
+         "highlight": BLUE,
+     },
+     ThemeSettings.ORANGE_THEME_NAME: {
+@@ -95,7 +93,7 @@
+         "background": BLACK,
+         "info_background": LIGHTBLACK,
+         "foreground": LIGHT_PINK,
+-        "frame": DARKPINK,
++        "frame": PURPLE,
+         "disabled": DARKGREY,
+         "go": PINK,
+         "esc_no": RED,

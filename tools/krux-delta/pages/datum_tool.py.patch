@@ -1,0 +1,62 @@
+--- a/pages/datum_tool.py
++++ b/pages/datum_tool.py
+@@ -301,7 +301,8 @@
+                 [
+                     (t("Via Camera"), self.scan_qr),
+                     (t("Via Manual Input"), self.text_entry),
+-                    (t("From Storage"), self.read_file),
++                    # Custom for Android
++                    ("Load from Clipboard", self.load_from_clipboard),
+                 ],
+             ),
+         )
+@@ -395,6 +396,20 @@
+         # pylint: disable=C0207
+         page.title = filename.split("/")[-1]
+         return page.view_contents()
++    
++    # Custom for Android
++    def load_from_clipboard(self):
++        """Handler for loading from clipboard"""
++
++        content = self.paste_clipboard()
++        if not content:
++            self.flash_error(t("Clipboard is empty or not available."))
++            return MENU_CONTINUE
++
++        print("Loaded from clipboard:", content)
++        page = DatumTool(self.ctx)
++        page.contents, page.title = content, t("Clipboard Text")
++        return page.view_contents()
+ 
+ 
+ class DatumTool(Page):
+@@ -741,7 +756,8 @@
+ 
+             # when not sensitive, allow export to sd
+             if not self.sensitive:
+-                menu.append((t("Save to SD card"), lambda: "export_sd"))
++                # Custom for Android
++                menu.append(("Export to Clipboard", lambda: "export_clip"))
+ 
+         else:
+             if isinstance(self.contents, bytes):
+@@ -826,7 +842,7 @@
+             self.ctx,
+             todo_menu,
+             offset=info_len * FONT_HEIGHT + DEFAULT_PADDING,
+-            **back_status,
++            **back_status
+         )
+         _, status = menu.run_loop()
+ 
+@@ -883,7 +899,7 @@
+             # if user chose to export_qr
+             self.view_qr()
+         else:
+-            # user chose export_sd
+-            self.save_sd()
++            # Custom for Android
++            self.copy_to_clipboard(self.contents)
+ 
+         return self.view_contents(**kvargs)

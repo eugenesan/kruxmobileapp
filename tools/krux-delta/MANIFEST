@@ -1,0 +1,29 @@
+# Android modifications applied to the in-tree Krux.
+#
+# One patch per file, produced by `krux_delta.py record <ref>`.
+# The reason column is documentation, not enforced.
+# Format: <path under src/krux> | <why it is modified>
+#
+# Recorded against: krux-sighash-noknots-min
+
+display.py | font metrics and geometry from the Kivy lcd, not board.config; portrait by default
+encryption.py | mnemonic storage on kivy JsonStore; older backend than main's
+krux_settings.py | no boot_flash_hash, no persist setting; no Settings singleton; orientation via Settings()
+metadata.py | VERSION carries the Android marker
+pages/__init__.py | base Page: no to_landscape/to_portrait, Android draw calls
+pages/capture_entropy.py | no orientation calls; Shannon entropy over 24-bit
+pages/datum_tool.py | clipboard instead of SD card
+pages/encryption_ui.py | no StorageCorruptedError guard (older storage backend)
+pages/home_pages/bip85.py | Android BIP85
+pages/home_pages/home.py | board import; shutdown label via ctx.power_manager
+pages/login.py | no tools page; About is text not QR; Shutdown always in menu
+pages/mnemonic_loader.py | Android mnemonic entry
+pages/qr_capture.py | no orientation calls; Android camera provider
+pages/qr_view.py | Android QR rendering
+pages/settings_page.py | Android settings page
+pages/tools.py | no flash tools on Android
+pages/utils.py | no LIGHT_THEME colour special case
+qr.py | QR version capped at 10 for high-DPI screens
+settings.py | kivy JsonStore settings backend; imports board
+themes.py | Android colour set
+touch.py | Android touch handling

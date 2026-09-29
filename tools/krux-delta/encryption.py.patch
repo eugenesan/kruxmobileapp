@@ -1,0 +1,158 @@
+--- a/encryption.py
++++ b/encryption.py
+@@ -20,6 +20,7 @@
+ # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+ # THE SOFTWARE.
+ 
++from kivy.storage.jsonstore import JsonStore  # Custom for Android
+ import ujson as json
+ import hashlib
+ from krux import kef
+@@ -30,36 +31,18 @@
+ 
+ FLASH_PATH_STR = "/" + FLASH_PATH + "/%s"
+ 
++# Custom for Android
++STORE_FILE_PATH = "../seeds.json"
+ QR_CODE_ITER_MULTIPLE = 10000
+ 
+ 
+-class StorageCorruptedError(Exception):
+-    """Stored mnemonics file exists but is not a valid object; it is left
+-    untouched instead of being overwritten, so its data can be recovered."""
+-
+-
+ class MnemonicStorage:
+     """Handler of stored encrypted seeds"""
+ 
+-    @staticmethod
+-    def _load_mnemonics(contents):
+-        return json.loads(contents)
+-
+     def __init__(self) -> None:
+-        self.stored = {}
++        # Custom for Android
++        self.stored = JsonStore(STORE_FILE_PATH)
+         self.stored_sd = {}
+-        try:
+-            with SDHandler() as sd:
+-                self.stored_sd = self._load_mnemonics(sd.read(MNEMONICS_FILE))
+-        except (OSError, ValueError):
+-            # missing/unreadable SD card or malformed JSON -> start empty
+-            pass
+-        try:
+-            with open(FLASH_PATH_STR % MNEMONICS_FILE, "r") as f:
+-                self.stored = self._load_mnemonics(f.read())
+-        except (OSError, ValueError):
+-            # missing/unreadable flash file or malformed JSON -> start empty
+-            pass
+ 
+     def _deprecated_decrypt(self, key, salt, iterations, mode, payload):
+         """in-the-wild, some `seeds.json` may have encrypted mnemonic words"""
+@@ -84,24 +67,24 @@
+             plaintext = kef._unpad(decryptor.decrypt(payload), pkcs_pad=False)
+             return plaintext.decode()
+         except:
+-            # broad on purpose: any failure here means a wrong key or
+-            # incompatible legacy ciphertext -> return None
+             return None
+ 
+     def list_mnemonics(self, sd_card=False):
+         """List all seeds stored on a file"""
++        mnemonic_ids = []
+         source = self.stored_sd if sd_card else self.stored
+-        if not isinstance(source, dict):
+-            # corrupt/non-dict storage -> nothing to list
+-            return []
+-        return list(source)
++        for mnemonic_id in source:
++            mnemonic_ids.append(mnemonic_id)
++        return mnemonic_ids
+ 
+     def decrypt(self, key, mnemonic_id, sd_card=False):
+         """Decrypt a selected encrypted mnemonic from a file"""
+-        source = self.stored_sd if sd_card else self.stored
+-        stored_value = source.get(mnemonic_id) if isinstance(source, dict) else None
+-        if not isinstance(stored_value, dict):
+-            # unknown id, or a corrupt/non-dict storage entry -> nothing to decrypt
++        try:
++            if sd_card:
++                stored_value = self.stored_sd.get(mnemonic_id)
++            else:
++                stored_value = self.stored.get(mnemonic_id)
++        except:
+             return None
+ 
+         if stored_value.get("b64_kef"):
+@@ -125,21 +108,13 @@
+         mnemonics = {}
+         if sd_card:
+             # load current MNEMONICS_FILE
+-            orig_len = 0
+             try:
+                 with SDHandler() as sd:
+                     contents = sd.read(MNEMONICS_FILE)
+                     orig_len = len(contents)
+-                    mnemonics = self._load_mnemonics(contents)
+-            except OSError:
+-                # missing file -> write a fresh store
+-                pass
+-            except ValueError as exc:
+-                # corrupt JSON -> preserve for recovery
+-                raise StorageCorruptedError(MNEMONICS_FILE) from exc
+-            if not isinstance(mnemonics, dict):
+-                # wrong shape -> preserve for recovery
+-                raise StorageCorruptedError(MNEMONICS_FILE)
++                    mnemonics = json.loads(contents)
++            except:
++                orig_len = 0
+ 
+             # save the new MNEMONICS_FILE
+             try:
+@@ -151,31 +126,14 @@
+                         contents += " " * (orig_len - len(contents))
+                     sd.write(MNEMONICS_FILE, contents)
+             except:
+-                # broad on purpose: any failure to save means the store failed
+                 return False
+         else:
++            #Custom for Android
+             try:
+-                # load current MNEMONICS_FILE
+-                with open(FLASH_PATH_STR % MNEMONICS_FILE, "r") as f:
+-                    mnemonics = self._load_mnemonics(f.read())
+-            except OSError:
+-                # missing file -> write a fresh store
+-                pass
+-            except ValueError as exc:
+-                # corrupt JSON -> preserve for recovery
+-                raise StorageCorruptedError(MNEMONICS_FILE) from exc
+-            if not isinstance(mnemonics, dict):
+-                # wrong shape -> preserve for recovery
+-                raise StorageCorruptedError(MNEMONICS_FILE)
+-            try:
+-                # save the new MNEMONICS_FILE
+-                with open(FLASH_PATH_STR % MNEMONICS_FILE, "w") as f:
+-                    mnemonics[mnemonic_id] = {"b64_kef": b64_kef}
+-                    f.write(json.dumps(mnemonics))
++                self.stored.put(mnemonic_id, b64_kef = b64_kef)
+             except:
+-                # broad on purpose: any failure to save means the store failed
+                 return False
+-        return True
++            return True
+ 
+     def del_mnemonic(self, mnemonic_id, sd_card=False):
+         """Remove an entry from encrypted mnemonics file"""
+@@ -189,6 +147,8 @@
+                     contents += " " * (orig_len - len(contents))
+                 sd.write(MNEMONICS_FILE, contents)
+         else:
+-            self.stored.pop(mnemonic_id)
+-            with open(FLASH_PATH_STR % MNEMONICS_FILE, "w") as f:
+-                f.write(json.dumps(self.stored))
++            # Custom for Android
++            try:
++                self.stored.delete(mnemonic_id)
++            except:
++                raise("Error deleting mnemonic from storage")

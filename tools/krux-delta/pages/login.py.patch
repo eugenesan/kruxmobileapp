@@ -1,0 +1,69 @@
+--- a/pages/login.py
++++ b/pages/login.py
+@@ -22,6 +22,7 @@
+ # THE SOFTWARE.
+ 
+ import sys
++import board  # Android
+ from embit.networks import NETWORKS
+ from . import (
+     Menu,
+@@ -74,8 +75,8 @@
+         ]
+         if ctx.power_manager is not None:
+             kboard.has_battery = ctx.power_manager.has_battery()
+-        if kboard.has_battery:
+-            login_menu_items.append((t("Shutdown"), self.shutdown))
++        # Custom for Android
++        login_menu_items.append((t("Shutdown"), self.shutdown))
+ 
+         super().__init__(
+             ctx,
+@@ -385,9 +386,9 @@
+             if Tools(self.ctx).run() == MENU_EXIT:
+                 break
+ 
+-        # Unimport tools
+-        sys.modules.pop("krux.pages.tools")
+-        del sys.modules["krux.pages"].tools
++        if board.config["type"] != "android":  # Unimport tools
++            sys.modules.pop("krux.pages.tools")
++            del sys.modules["krux.pages"].tools
+ 
+         return MENU_CONTINUE
+ 
+@@ -405,26 +406,13 @@
+         from ..metadata import VERSION
+         from ..qr import FORMAT_NONE
+ 
+-        title = "selfcustody.github.io/krux"
+-        msg = (
+-            title
+-            + "\n"
+-            + t("Hardware")
+-            + ": %s\n" % board.config["type"]
+-            + t("Version")
+-            + ": %s" % VERSION
+-        )
+-        offset_x = 0
+-        width = 0
+-        if kboard.is_cube:
+-            offset_x = self.ctx.display.width() // 4
+-            width = self.ctx.display.width() // 2
+-        self.display_qr_codes(
+-            title,
+-            FORMAT_NONE,
+-            msg,
+-            offset_x=offset_x,
+-            width=width,
+-            highlight_prefix=":",
++        # Android Custom
++        self.ctx.display.clear()
++        self.ctx.display.draw_centered_text(
++            "Krux\n"
++            + "selfcustody.github.io/krux\n\n"
++            + t("Version") + "\n%s" % VERSION
+         )
++        # Android Custom
++        self.ctx.input.wait_for_button()
+         return MENU_CONTINUE
