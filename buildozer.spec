@@ -45,7 +45,11 @@ version = 26.08.0
 
 # (list) Application requirements
 # comma separated e.g. requirements = sqlite3,kivy
-requirements = python3,kivy,pycryptodome,camera4kivy,gestures4kivy,pyzbar==0.1.9,libzbar,pillow,pyqrcode,numpy
+# numpy is gone: mocks/sensor.py computes the per-channel standard
+# deviations for camera entropy with Pillow, which is already required
+# here. numpy had no Android wheel on any Python and cross-compiles
+# through a meson build that could not be made to work.
+requirements = python3,kivy,pycryptodome,camera4kivy,gestures4kivy,pyzbar==0.1.9,libzbar,pillow,pyqrcode
 
 # (str) Custom source folders for requirements
 # Sets custom source for any requirements with recipes

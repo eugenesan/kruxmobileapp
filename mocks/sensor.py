@@ -24,7 +24,39 @@ from kivy.uix.widget import Widget
 from .qrreader import QRReader
 from unittest import mock
 from kivy.properties import ObjectProperty
-import numpy as np
+from math import sqrt
+from PIL import Image
+
+
+def _channel_std_percent(histogram, total):
+    """Population standard deviation of one 256-bin channel, as a percentage.
+
+    Two-pass (mean, then mean squared deviation) over the histogram, which is
+    what numpy.std does, so the result agrees with it to floating-point noise.
+    The one-pass `E[x^2] - E[x]^2` form is avoided deliberately: on a near-flat
+    image it cancels catastrophically and can return 0 or a NaN, and these
+    values are compared against the entropy thresholds, so a wrong answer there
+    is a security decision rather than a cosmetic one.
+    """
+    if total <= 0:
+        return 0
+    mean = 0.0
+    for value, count in enumerate(histogram):
+        if count:
+            mean += value * count
+    mean /= total
+
+    variance = 0.0
+    for value, count in enumerate(histogram):
+        if count:
+            deviation = value - mean
+            variance += count * deviation * deviation
+    variance /= total
+
+    if variance <= 0.0:
+        return 0
+    return (sqrt(variance) * 100) // 255
+
 
 class MockStatistics:
     """
@@ -39,24 +71,22 @@ class MockStatistics:
         if not img:
             set_all_to(0)
             return
-        
-        self.img = img  # RGBA image
-        # Convert the flat list of bytes into a 4-channel image array (width x height x 4)
+
+        # Pillow decodes the raw RGBA buffer; it raises if the length does not
+        # match the requested geometry, which is the same guard the previous
+        # numpy reshape provided.
         try:
-            image_array = np.frombuffer(img, dtype=np.uint8).reshape((height, width, 4))
-        except:
+            image = Image.frombytes("RGBA", (width, height), img)
+        except Exception:
             set_all_to(10) # If the image format is not standard, set all to 10 to pass the entropy check
             return
 
-        # Separate the R, G, and B channels
-        r_channel = image_array[:, :, 0]
-        g_channel = image_array[:, :, 1]
-        b_channel = image_array[:, :, 2]
-
-        # Calculate the percentage standard deviation for each channel
-        self.r_std = (np.std(r_channel) * 100) // 255
-        self.g_std = (np.std(g_channel) * 100) // 255
-        self.b_std = (np.std(b_channel) * 100) // 255
+        # Pillow lays the per-band histograms out consecutively: R, G, B, A.
+        histograms = image.histogram()
+        pixels = width * height
+        self.r_std = _channel_std_percent(histograms[0:256], pixels)
+        self.g_std = _channel_std_percent(histograms[256:512], pixels)
+        self.b_std = _channel_std_percent(histograms[512:768], pixels)
 
     
     # It would be too resource expensive to convert RGB to LAB on Android
