@@ -40,6 +40,11 @@ REFUSED_PARTIAL = "partial"
 # every input would be signed, but with types no one label covers
 REFUSED_MIXED = "mixed"
 
+# Slot id for a signature under a key that has no valid curve point. embit would
+# never have signed with such a key, so it is by definition not one of ours.
+# Distinct from any serialized key, so it can never collide with a real one.
+NOT_OURS = b"\x00not-ours"
+
 # The types we will ask sign_with for; anything else falls back to DEFAULT,
 # under which embit signs the inputs asking for ALL and skips the rest.
 #
@@ -199,6 +204,11 @@ def signed_hash_types(tx):
     Read off the signatures rather than predicted. The bytes come back too
     because a host can pre-populate any slot, and a caller comparing only which
     slots are occupied would read a planted signature as one of ours.
+
+    A key that cannot be serialized is recorded under NOT_OURS rather than
+    allowed to raise. Raising let a host abort a signing attempt outright, by
+    planting a malformed key in any slot, which is the opposite of what this
+    function is for.
     """
 
     def hash_type(raw):
@@ -208,14 +218,34 @@ def signed_hash_types(tx):
             return None
         return raw[-1] if len(raw) != 64 else SIGHASH.DEFAULT
 
+    def slot(pubkey):
+        """A stable id for the slot this signature sits in.
+
+        Normally the key's serialized bytes. embit builds a PublicKey from raw
+        bytes without checking them and only fails when the point is serialized,
+        so a host can plant a key that has none; that one gets its own id
+        instead. It has to stay visible here: skipping it would hide the
+        signature from the before/after comparison in sign_with, and a planted
+        signature that goes unnoticed is exactly what that comparison exists to
+        catch. Since embit could not have signed with such a key, it is not one
+        of ours, and the comparison rejects it on that basis.
+        """
+        try:
+            return bytes(pubkey.sec())
+        except ValueError:
+            return NOT_OURS
+
     found = {}
     for i, inp in enumerate(tx.inputs):
         for pubkey, sig in inp.partial_sigs.items():
             raw = bytes(sig)
-            found[(i, "partial", bytes(pubkey.sec()))] = (hash_type(raw), raw)
-        for pubkey, sig in inp.taproot_sigs.items():
+            found[(i, "partial", slot(pubkey))] = (hash_type(raw), raw)
+        # taproot_sigs is keyed by (pubkey, leaf_hash), not by pubkey, so the
+        # key is the tuple and the pubkey is its first element. Using the whole
+        # tuple as the slot would pass it to slot() and fail on .sec().
+        for (pubkey, _leaf), sig in inp.taproot_sigs.items():
             raw = bytes(sig)
-            found[(i, "taproot", str(pubkey))] = (hash_type(raw), raw)
+            found[(i, "taproot", slot(pubkey))] = (hash_type(raw), raw)
         # not elif: an embit that added taproot_key_sig while still writing
         # final_scriptwitness would otherwise stop this reading the witness
         key_sig = getattr(inp, "taproot_key_sig", None)
