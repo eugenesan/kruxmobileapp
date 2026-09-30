@@ -1,7 +1,13 @@
 #!/bin/bash
 
-mkdir -p ~/.buildozer $(pwd)/.buildozer
-mkdir -p ~/.gradle $(pwd)/.gradle
+# Only the project-local directories, because those are the ones mounted below.
+# The container's ~/.buildozer and ~/.gradle are bind mounts of these, so creating
+# the home-directory equivalents would leave two empty directories that no build
+# ever reads. docker_bash.sh is the exception: it is an interactive shell and
+# deliberately uses the home cache, so it creates nothing itself and needs the
+# directory to exist.
+mkdir -p "$(pwd)/.buildozer"
+mkdir -p "$(pwd)/.gradle"
 
 # python-for-android is cloned into .buildozer by buildozer, and three upstream
 # defects stop this project from building with the current image. They are
@@ -20,15 +26,19 @@ mkdir -p ~/.gradle $(pwd)/.gradle
 #   C      run_pymodules_install asks host pip to install Android wheel URLs,
 #          which host pip rejects as "not a supported wheel on this platform"
 #
-# Details and upstream-ready write-ups: UPSTREAM-P4A-BUGS.md
+# F is not an upstream defect: it makes pip resolve from $P4A_WHEELHOUSE when
+# that variable is set, and does nothing when it is not, so a build with a
+# working network is unaffected. See tools/patch_p4a.py.
+#
+# Details and upstream-ready write-ups for A-E: UPSTREAM-P4A-BUGS.md
 # Full build and test instructions: BUILDING-AND-TESTING.md
 python3 tools/patch_p4a.py || exit 1
 
 # Docker Build Script for Kivy Android
 docker run --rm -it \
-  -v $(pwd):/home/user/hostcwd \
-  -v $(pwd)/.buildozer:/home/user/.buildozer \
-  -v $(pwd)/.gradle:/home/user/.gradle \
+  -v "$(pwd)":/home/user/hostcwd \
+  -v "$(pwd)/.buildozer":/home/user/.buildozer \
+  -v "$(pwd)/.gradle":/home/user/.gradle \
   -w /home/user/hostcwd \
   ghcr.io/kivy/buildozer:latest \
   android debug
