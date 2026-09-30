@@ -242,9 +242,9 @@ def modified_files():
 def classify(app_failures, modified):
     """Split app failures into 'touches a recorded Android modification' or not.
 
-    This is what turns "188 failures" into a statement about the delta rather
-    than about the app. A failure in a file the MANIFEST does not list is the
-    interesting one: either a real regression, or a gap in the recording.
+    This is what turns a bare failure count into a statement about the delta
+    rather than about the app. A failure in a file the MANIFEST does not list is
+    the interesting one: either a real regression, or a gap in the recording.
     """
     android = {f for f in app_failures if _touches(f, modified)}
     return android, app_failures - android
@@ -256,9 +256,10 @@ def _touches(nodeid, modified):
     tests/pages/test_x.py -> pages/x.py, by dropping the leading "test_" and
     keeping the ".py" that is already there. Appending another one gave
     "display.py.py", which matches nothing, so every failure was reported as
-    unexplained -- including the 21 in test_display.py, whose file *is* modified.
-    A classifier that cannot attribute anything is worse than none: it reads as
-    192 unexplained regressions when the truth is a handful.
+    unexplained -- including the two dozen in test_display.py, whose file *is*
+    modified. A classifier that cannot attribute anything is worse than none: it
+    reads as a couple of hundred unexplained regressions when the truth is a
+    handful.
     """
     if not modified:
         return False
