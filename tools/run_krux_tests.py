@@ -124,11 +124,20 @@ def build(work, krux, ref):
     # `krux.…` and `src.krux.…`, so the baseline needs both spellings, and its
     # `src.krux` has to be *its own* tree -- pointing this at the app would make
     # the baseline test the app and pass for the wrong reason.
+    #
+    # The nesting is load-bearing. pkg_root goes on PYTHONPATH, and the app's is
+    # the repository root, so `src.krux` resolves through APP/src/krux. Putting
+    # krux directly in baseline-pkg gave the bare `krux` spelling only, and the
+    # three tests that import `from src.krux.…` -- test_xor_bytes,
+    # test_fail_xor_bytes_different_lengths, test_rotary_encoder_handler -- failed
+    # with ModuleNotFoundError: No module named 'src'. Same harness, same
+    # interpreter, so it read as a sync defect; it was a missing directory level.
     baseline_pkg = os.path.join(work, "baseline-pkg")
     if os.path.islink(baseline_pkg) or os.path.exists(baseline_pkg):
         os.remove(baseline_pkg)
-    os.makedirs(baseline_pkg)
-    os.symlink(os.path.join(baseline, "krux"), os.path.join(baseline_pkg, "krux"))
+    baseline_pkg_src = os.path.join(baseline_pkg, "src")
+    os.makedirs(baseline_pkg_src)
+    os.symlink(os.path.join(baseline, "krux"), os.path.join(baseline_pkg_src, "krux"))
 
     # ur / urtypes from the app, in a directory of their own so that the
     # krux tree's own vendor/ copies cannot merge into the same package
