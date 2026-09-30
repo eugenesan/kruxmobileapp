@@ -1,7 +1,15 @@
 # Testing the Krux update on a real Android device
 
-APK: `bin/krux-26.06.0-arm64-v8a_armeabi-v7a-debug.apk` (debug build, unsigned for
-release, both `arm64-v8a` and `armeabi-v7a` present).
+APK: `bin/krux-26.08.0-arm64-v8a_armeabi-v7a-debug.apk` (debug build, unsigned for
+release, both `arm64-v8a` and `armeabi-v7a` present). The version in the filename
+comes from `buildozer.spec`; the version on the About screen comes from
+`src/krux/metadata.py`, and the two are expected to differ.
+
+**Verified.** This was run on a Nexus 5 (32-bit `armeabi-v7a`, Android 16), and
+the build passed: UR, animated UR and BBQr all scan; the camera is released after
+each; logcat is clean; and the app receives, signs and sends over QR both regular
+and unified sighash transactions. The result is recorded at the bottom so it is
+obvious which steps were exercised and which were not.
 
 Two things changed at once, so the tests below separate them deliberately:
 
@@ -10,6 +18,9 @@ Two things changed at once, so the tests below separate them deliberately:
   signature hash and dropping silent payments
 - **the build** — the numpy→Pillow change in `mocks/sensor.py`, five p4a patches,
   a `pyqrcode` recipe
+- **the compatibility layer** — two missing shims (`mocks/base32.py`,
+  and `uUR`'s `DECODER_*` constants) that made every QR scan hang with the camera
+  stuck on. Both fixed; see §6.
 
 ## 0. Install
 
@@ -18,7 +29,7 @@ The application id is `selfcustody.github.io.krux` (from `package.domain` +
 `org.kivy.android.PythonActivity` — Kivy's, not a `MainActivity`.
 
 ```bash
-adb install -r bin/krux-26.06.0-arm64-v8a_armeabi-v7a-debug.apk
+adb install -r bin/krux-26.08.0-arm64-v8a_armeabi-v7a-debug.apk
 ```
 
 Launch, either explicitly:
@@ -50,7 +61,7 @@ Pillow-based `mocks/sensor.py` all import.
 
 | # | Do | Expect |
 |---|---|---|
-| 1.1 | Open **Settings → About** | Version reads `26.06.beta1` with the `Android v0.2` marker. This is the one file where the app deliberately keeps its own VERSION rather than main's |
+| 1.1 | Open **Settings → About** | Version reads `26.08.0.unified-sighash.A1`. The app's `src/krux/metadata.py` differs from the branch in exactly that one line — the branch reads `...sighash.1` — which is why `krux_delta.py` excludes the file by name rather than verifying it |
 | 1.2 | Look for **Silent Payments** anywhere in the menus | **Gone.** Dropped in the sync. If you find it, the sync did not apply |
 | 1.3 | Check the PSBT menu exists and opens | Signing flow reachable |
 | 1.4 | Change the theme / look around | No crash, text renders, Android colours applied |
@@ -75,8 +86,10 @@ eyeballed.
 ## 3. Camera and entropy — the numpy→Pillow change
 
 `mocks/sensor.py` now computes per-channel standard deviation with Pillow
-instead of numpy. Verified numerically identical to numpy on 14 cases, but
-**never executed on hardware**, so this is the area I would test most carefully.
+instead of numpy. Verified numerically identical to numpy on 14 cases. This is
+still the area I would test most carefully, because the two-pass form exists for
+a reason: a flat frame has near-zero variance, and that is exactly where the
+one-pass `E[x²] − E[x]²` formula it replaced cancels catastrophically.
 
 | # | Do | Expect |
 |---|---|---|
@@ -118,16 +131,28 @@ documented rather than tested as passing.
 
 ## 6. QR and signing, general
 
+These are the steps that were **failing before the shim fixes**, so they are the
+ones worth repeating on any future build.
+
 | # | Do | Expect |
 |---|---|---|
-| 6.1 | Scan a PSBT QR code | Decodes |
-| 6.2 | Sign and display the signed PSBT as an animated QR | Renders on a high-DPI screen. `qr.py` caps the QR version at 10, so a large PSBT may take more frames — expected |
-| 6.3 | Scan an XQR / larger-format code | Decodes if the app supports it |
-| 6.4 | Load a descriptor wallet, a miniscript, a multisig | All reachable, none crash |
+| 6.1 | Scan a **BC-UR** PSBT QR code | Decodes. This raised `ImportError` before: `mocks/uUR.py` was missing 12 `DECODER_*` constants |
+| 6.2 | Scan a **BBQr** QR code | Decodes. `mocks/base32.py` did not exist at all, so every BBQr scan raised `ModuleNotFoundError` |
+| 6.3 | Cancel or fail any scan deliberately | The camera preview **disappears** and you are back where you started. If the feed ever stays on screen with no way out but Shutdown, that is the loop leaking its sensor — see below |
+| 6.4 | Sign and display the signed PSBT as an animated QR | Renders on a high-DPI screen. `qr.py` caps the QR version at 10, so a large PSBT may take more frames — expected |
+| 6.5 | Load a descriptor wallet, a miniscript, a multisig | All reachable, none crash |
+
+**6.3 is worth watching, but it is not a known defect.** `qr_capture_loop()`
+in `src/krux/pages/qr_capture.py` ends with straight-line
+`self.ctx.camera.stop_sensor()` and no `try`/`finally`, so a raise inside the
+loop would leave the sensor live and the Preview widget attached. That is read
+from the source; it has not been seen to happen on a device, and it is not what
+caused the original problem — that was the two shims above. It is a robustness
+gap, not a known fault, and this document previously got that wrong.
 
 ## 7. Regression spot-checks on touched areas
 
-The 21 Android-modified files cluster into a few areas. These are the ones where
+The 20 Android-modified files cluster into a few areas. These are the ones where
 a bad merge would be visible:
 
 | # | Do | Expect |
@@ -140,12 +165,30 @@ a bad merge would be visible:
 
 ## What I would fix first, in order
 
-1. **3.2** — entropy on a flat surface. Security-relevant and the least-tested change.
+1. **3.2** — entropy on a flat surface. Security-relevant, and the one change
+   with a mathematical rather than an import-level failure mode.
 2. **2.6** — a unified-sighash signature that actually verifies against a wallet.
 3. **2.3** — the hash-type label not wrapping. Cheap to check, easy to regress.
 4. **4.1** — settings surviving a restart. If `JsonStore` is not flushing, the app
    looks broken within one session.
 5. **5.2** — duplicate-ID refusal. Proves the storage backend behaves.
+6. **6.3** — a `try`/`finally` in `qr_capture_loop()`. Last, because it is the one
+   item here that is a robustness gap rather than something observed to be wrong.
+
+## Result of the run that was done
+
+Device: Nexus 5, 32-bit `armeabi-v7a`, Android 16 (SDK 36). No functional issue.
+The app received, signed and sent over QR both regular and unified sighash
+transactions, which is the acceptance test for this work.
+
+Exercised: 0 (install, clean launch, no import errors), 1 (silent payments gone,
+PSBT menu reachable), 2 (both hash types sign and are emitted), 3 (entropy capture
+reachable; verdicts flip between flat and textured surfaces), 6 (UR, animated UR
+and BBQr all scan, camera released each time).
+
+Not exercised, and therefore still open: **2.6** against a wallet that
+independently verifies unified sighash. The signature scanned and was sent, but
+no third-party verification of it was performed on that run.
 
 ## How to report a failure
 

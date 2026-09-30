@@ -1,6 +1,6 @@
 # Maintaining the Android delta across Krux updates
 
-`src/krux` is upstream Krux plus 21 Android-modified files. Every upstream sync
+`src/krux` is upstream Krux plus 20 Android-modified files. Every upstream sync
 means re-applying that delta, and the interesting part is not how to do the
 merge — that is a `patch` or a rebase, and it fails loudly when it cannot be
 done. The interesting part is the failure mode that *does not* announce itself.
@@ -21,7 +21,7 @@ merge means the app keeps old upstream code without anyone noticing.
 
 Three parts. Only the third is the interesting one.
 
-1. **`tools/krux-delta/`** — the delta as 21 patch files, one per modified file,
+1. **`tools/krux-delta/`** — the delta as 20 patch files, one per modified file,
    each `diff(upstream, app)`, plus a `MANIFEST` naming the file and why it is
    modified. The reason column is documentation: it is what a reviewer reads when
    a merge conflicts, and what tells you whether a conflict is acceptable.
@@ -41,7 +41,7 @@ tools/krux_delta.py report                           # what is modified, and why
 Current state:
 
 ```
-21 modified file(s), 399 insertions, 270 deletions
+20 modified file(s)
 65 files byte-identical to the branch, 1 app-only (gpg_ui.py)
 ```
 
@@ -58,16 +58,18 @@ the result is semantically right. The `encryption.py` case rebases cleanly and
 is still wrong. Worth doing *as well as* the verifier, because it captures
 intent and conflict resolutions in history; not a substitute.
 
-**Keep the 21 files as verbatim overrides copied over `src/krux` after each
+**Keep the 20 files as verbatim overrides copied over `src/krux` after each
 sync.** Simple and conflict-free, and it is what I would argue *against*: it
 discards upstream changes to those files wholesale, so a security fix landing in
 `encryption.py` or `display.py` is silently dropped with no signal at all. The
 failure is invisible and permanent.
 
 **Do nothing and rely on the test suite.** The suite cannot do this job. Against
-the app tree it reports 1142 passed / 189 failed; 130 of the failures are in
-files carrying a recorded Android modification and 59 are not, all downstream of
-the fixtures reporting a Krux device. It is a useful regression net but it is
+the app tree it currently reports 1146 passed / 185 failed; most of the failures
+are in files carrying a recorded Android modification, and the rest are
+downstream of the fixtures reporting a Krux device. (`tests-harness.md` carries
+the split, and flags its per-signature counts as needing re-derivation.)
+It is a useful regression net but it is
 not a merge checker: it tells you behaviour changed, not whether the change was
 intended, and it cannot distinguish "the Android mod is doing its job" from
 "upstream's fix got lost". It cannot be made into a gate, either —
@@ -121,7 +123,7 @@ this is informational, and its value is in the unexplained-failure count. See
 among them.
 
 **The gap worth closing:** there is no automated test for the Android delta
-itself. A focused suite over the 21 modified files — the clipboard path, the
+itself. A focused suite over the 20 modified files — the clipboard path, the
 `JsonStore` round trip, the QR version cap — is a few dozen tests and would be
 worth more than the ~1140 that do pass. `tools/verify_sensor_stats.py` covers
 one of them today.

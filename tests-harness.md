@@ -72,14 +72,27 @@ only one of them.
 ### The numbers, and what they mean
 
 ```
-app        189 failed, 1142 passed, 3 deselected, 1 xfailed, 1 error   92s
-baseline     3 failed, 1329 passed, 3 deselected, 1 xfailed            92s
+app        185 failed, 1146 passed, 3 deselected, 1 xfailed, 1 error  139s
+baseline    1332 passed, 3 deselected, 1 xfailed                        143s
 ```
 
-Split by the MANIFEST, the app's 189 are:
+The baseline's 3 failures were a missing `src/` directory level in the harness,
+not a platform conflict — `from src.krux.…` resolved to nothing, so three tests
+errored at import. The app's 4 were the inert
+`patch("krux.encryption.open", …)`. So the baseline is clean, and the app's
+count is 185 rather than 189.
+
+Split by the MANIFEST, an earlier 189-failure run gave:
 
 - **130** in files carrying a recorded Android modification
 - **59** in files that do not, all downstream of the same fixture mismatch
+
+**That split is stale.** Four of the 130 were in `test_encryption.py` and were
+fixed, so it is now at most 126 / 59 — but which four, and whether anything else
+moved, is not recorded, because that run's output was kept only as its tail.
+`tools/run_krux_tests.py` re-derives the split from the MANIFEST on every run;
+do that before quoting the numbers. **The totals above are verified; the split
+is not.**
 
 Those 59 are not one bug. Re-running them individually gives four distinct
 signatures, all rooted in the board type being a Krux device:
@@ -91,16 +104,25 @@ signatures, all rooted in the board type being a Krux device:
 | `<= not supported between int and MagicMock` | 14 | `display.py:322`, `_asian_chars_per_line()` returns a MagicMock because the numeric `lcd` the Android display reads is not installed |
 | `save_file` / `print_string` / `write` not called | 13 | SD-card and printer paths that the app does not have |
 
-None is a regression from the sync, and none is fixable without lying to the
-fixtures. The right disposition is to record them as expected rather than chase
-them. The runner derives the split from the MANIFEST on every run, so the number
-can be re-derived rather than taken on trust — and a *new* failure in a file the
-MANIFEST does not list is the signal worth stopping for.
+**These four add to 75, not 59, and that discrepancy is not resolved.** The two
+counts were taken from different runs and from different sets: the 59 excludes
+failures in files the MANIFEST lists, and `display.py` *is* listed, so the 14
+`MagicMock` failures may well belong in the 130 rather than the 59. Do not
+present either table until it is re-derived from one run.
+
+None of them is a regression from the sync, and none is fixable without lying to
+the fixtures. The right disposition is to record them as expected rather than
+chase them. The runner derives the split from the MANIFEST on every run, so the
+number can be re-derived rather than taken on trust — and a *new* failure in a
+file the MANIFEST does not list is the signal worth stopping for.
 
 Two earlier claims in this file were wrong and are corrected here: the failures
 were described as "187 of 188", and the cause was described as the app's store
-being incomplete rather than the fixtures selecting the wrong branch. Both
-figures come from the run above.
+being incomplete rather than the fixtures selecting the wrong branch. A third
+followed: `test_load_encrypted_from_flash_wrong_key` was reported several times
+as order-dependent, on the strength of having passed once in isolation. It was
+never order-dependent — both sides collect the same tree in the same order — and
+it passed in isolation in an *earlier* run, before the harness was rebuilt.
 
 **Three tests allocate without bound, and one of them is fatal to the host.**
 `test_encrypt_save_error_exist`, `test_encrypt_save_error` and
@@ -112,11 +134,14 @@ the hang is unbounded memory growth as well.
 Measured individually, each of the three passes 2.5 GB in under 30 seconds. Run
 together they reach ~12.5 GB, which on a 15 GB host is not a slow run but the
 kernel OOM killer taking out unrelated processes. The runner deselects them by
-name, and `tools/krux_test_harness.py` caps peak RSS and interrupts any test
-that overruns, as a backstop for anything not on that list.
+name — **one `--deselect` per test**, because a single flag with three values
+honours only the first, which is how a run once reported "1 deselected" and then
+hit 13.5 GB. `tools/krux_test_harness.py` caps peak RSS and interrupts any test
+that overruns as a backstop, though a per-test SIGALRM is the real one: a cap
+checked *between* tests cannot help a test that allocates continuously.
 
-With the deselect in place the whole suite peaks at **216 MB** and finishes in
-92 seconds per side, so the harness is cheap to run. The caps matter because the
+With the deselect in place the whole suite peaks at **202 MB** and finishes in
+about 2m20s per side, so the harness is cheap to run. The caps matter because the
 failure mode is severe rather than because the suite normally needs the memory.
 
 **These remain undiagnosed.** They are consistent with the Android flow reaching
@@ -137,16 +162,28 @@ Three committed pieces make it work:
 | file | what it is |
 |---|---|
 | `tools/run_krux_tests.py` | builds the harness, runs both sides, compares |
-| `tools/krux_test_harness.py` | the pytest plugin: lcd geometry, settings reset, memory cap |
+| `tools/krux_test_harness.py` | the pytest plugin: lcd geometry, settings and seeds resets, memory cap |
 | `tools/test-stubs/` | `kivy.storage.jsonstore`, `board`, `ujson` |
 
 The plugin replaced an earlier version that patched Krux's own `conftest.py`.
 That was a bad shape: the patch depended on anchors in a file that changes
 upstream, and a moved anchor meant a silently unpatched harness rather than an
-error. Both patches are now hooks in a plugin — the lcd values are set after
-`mp_modules` installs the mock, and the settings reset is an ordinary autouse
-fixture — so the harness never edits the code it is testing. That also means a
-change to Krux's `conftest.py` cannot break it.
+error. All four accommodations are now hooks in a plugin — the lcd values are
+set after `mp_modules` installs the mock, the two file resets are autouse
+fixtures, and the seeds store is taught to read what a test injected — so the
+harness never edits the code it is testing. That also means a change to Krux's
+`conftest.py` cannot break it.
+
+**The seeds accommodation is the one that is not obvious.** The app's
+`MnemonicStorage` reads encrypted seeds from a real `JsonStore`; upstream reads
+them from a dict built by calling `open`. So every test that seeds storage with
+`patch("krux.encryption.open", mock_open(read_data=SEEDS_JSON))` patched a
+function the app never calls — `grep -c 'open('` on the app's `encryption.py`
+returns 0 — and the store came up empty, so assertions about its contents failed
+against nothing. The store now reads the injection when it is *constructed*,
+which is the only moment it is available: the test installs the patch inside its
+own `with` block, later than any fixture could see. Four app-side tests that way
+went from failing to passing, with no change to the tests.
 
 `tools/verify_sensor_stats.py` is separate and smaller: it checks the Pillow
 entropy statistics in `mocks/sensor.py` against the numpy implementation they
