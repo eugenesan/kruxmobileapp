@@ -54,11 +54,14 @@ class UREncoder(_UREncoder):
 #
 # The pure-Python decoder this shim wraps has no equivalent, so without these
 # the `from uUR import DECODER_OK` in qr.py raises ImportError the first time a
-# BC-UR frame is parsed. That is a crash inside the capture loop, which is worse
-# than a failed scan: the exception escapes before ctx.camera.stop_sensor() runs,
-# so the camera widget is never detached and the preview stays on screen with no
-# way out. Plain and pMofN QRs never reach that import, which is why mnemonic
-# scanning works and UR does not.
+# BC-UR frame is parsed -- a crash inside the capture loop rather than a failed
+# scan. Plain and pMofN QRs never reach that import, which is why mnemonic
+# scanning worked and UR did not.
+#
+# qr_capture_loop() has no try/finally around its teardown, so a raise in the
+# loop would also leave ctx.camera.stop_sensor() uncalled and the preview stuck
+# on screen. That is read from the source; it has not been seen to happen, and
+# it is not what this shim's absence was diagnosed as. See DEVICE-TESTING.md.
 DECODER_OK = 0
 DECODER_PROCESSING = 1
 DECODER_NO_RESULT = 2

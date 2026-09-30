@@ -4,8 +4,8 @@ src/krux/bbqr.py and src/krux/baseconv.py do `import base32`, which is a
 MicroPython built-in module. It is not part of CPython and it is not packaged
 into the APK: the bundle on the test device has 65 modules and none of them is
 base32. So every BBQr scan died with ModuleNotFoundError inside the capture
-loop -- which, like the uUR gap, escapes before ctx.camera.stop_sensor() runs
-and leaves the camera preview stuck on screen.
+loop, which is a crash rather than a failed scan. See the note at the end of
+mocks/uUR.py about how a raise in that loop affects the camera teardown.
 
 This is a faithful port of
 
