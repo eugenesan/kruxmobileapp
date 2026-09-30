@@ -69,6 +69,10 @@ the app tree it reports 1143 passed / 188 failed, and all 188 trace to the Andro
 modifications. It is a useful regression net but it is not a merge checker: it
 tells you behaviour changed, not whether the change was intended, and it cannot
 distinguish "the Android mod is doing its job" from "upstream's fix got lost".
+It cannot be made into a gate, either — `tests-harness.md` has the argument, and
+it comes down to `AndroidStore` implementing only the Android half of the store
+API, which makes upstream's write-then-read tests and its geometry tests mutually
+exclusive.
 
 ## Suggested workflow for a sync
 
@@ -96,19 +100,29 @@ Then re-run the test suite (§ below) and the device tests
 
 ## Running the upstream suite
 
-The harness lives outside this repository and is not checked in. Against the
-branch it gives 1335 passed; against this tree 1143 passed / 188 failed, and
-every failure is accounted for by an Android modification. The dominant root
-cause is that `AndroidStore` in `settings.py` only implements the Android half
-of the store API, so under Krux's device fixtures `Setting.__set__` calls a
-`store.delete` that does not exist, nothing persists, and every
-write-then-read test fails. Forcing `board.config["type"]` to `android` fixes
-those and breaks the geometry tests, so the suite cannot be a blanket gate.
+`tools/run_krux_tests.py` runs Krux's suite against this tree and against a
+baseline, and reports how many failures the Android delta explains. It needs a
+Krux clone with its `.venv`; see `tests-harness.md` for what it needs and why
+it is not a gate.
+
+```
+python3 tools/run_krux_tests.py --krux ../krux
+```
+
+It is **not** a gate, and cannot be made into one. `AndroidStore` in
+`settings.py` implements only the Android half of the store API, so under
+Krux's device fixtures `Setting.__set__` calls a `store.delete` that does not
+exist, nothing persists, and every write-then-read test fails. Forcing
+`board.config["type"]` to `android` fixes those and breaks 540 geometry tests —
+the two sets are mutually exclusive, because upstream's suite tests two
+platforms and this app is one of them. `verify` above is the gate; this is
+informational, and its value is in the unexplained-failure count.
 
 **The gap worth closing:** there is no automated test for the Android delta
 itself. A focused suite over the 21 modified files — the clipboard path, the
-`JsonStore` round trip, the Pillow entropy statistics against known fixtures —
-is a few dozen tests and would be worth more than the 1143 that do pass.
+`JsonStore` round trip, the QR version cap — is a few dozen tests and would be
+worth more than the ~1143 that do pass. `tools/verify_sensor_stats.py` covers
+one of them today.
 
 ## Known divergence, documented rather than fixed
 
@@ -143,8 +157,8 @@ either repository.
 
 ## The outstanding blocker
 
-`vendor/embit` is pinned to the commit tagged `v0.8.1-unified-sighash.1`. That commit exists
-**only on the machine that fetched it**, and is on no remote:
+`vendor/embit` is pinned to the commit tagged `v0.8.1-unified-sighash.1`. That
+commit is on no remote under the names the upstream `.gitmodules` files used:
 
 ```
 git ls-remote .../odudex/embit.git              | grep -c v0.8.1-unified-sighash.1 -> 0
@@ -152,8 +166,12 @@ git ls-remote .../privkeyio/embit.git          | grep -c v0.8.1-unified-sighash.
 git ls-remote .../diybitcoinhardware/embit.git | grep -c v0.8.1-unified-sighash.1 -> 0
 ```
 
-and `.gitmodules` points at `odudex/embit`, which does not contain it. So a
-fresh clone cannot obtain embit, and cannot build. Push the branch, then either
-change the URL or push to the remote that is named. Until then this repository
-is not reproducible on another machine, and the `verify` step cannot be run by
-anyone else.
+Both `.gitmodules` files now name `eugenesan/embit` — this repository with an
+absolute URL, Krux with a relative one, matching each repo's own style — on all
+eight Krux sighash branches. Krux's `main` and `feat/silent-payments` are
+untouched; they pin different embit commits that do exist upstream.
+
+**Still blocked:** the branch has to be pushed to that fork for either pointer
+to resolve. Until it is, a fresh clone cannot obtain embit and cannot build,
+and the `verify` step cannot be run by anyone else. The local clone at
+`../embit` has the tag.
