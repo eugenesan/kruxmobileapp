@@ -29,7 +29,8 @@ tools/            everything below
   krux_delta.py         the sync gate: is src/krux upstream + our edits?
   krux-delta/           the 21 recorded patches, and a MANIFEST saying why
                         each file is modified
-  patch_p4a.py          five fixes for python-for-android, re-applied per build
+  patch_p4a.py          the five fixes for python-for-android's three defects,
+                        plus an opt-in wheelhouse, re-applied per build
   verify_*.py           the checks described below
   test-stubs/           kivy/board/ujson stand-ins for the upstream suite
   krux_test_harness.py  pytest plugin for that suite
@@ -164,6 +165,15 @@ Re-apply after any clean:
 
 ```bash
 python3 tools/patch_p4a.py
+```
+
+A sixth patch, **F**, is not a fix for any of the three and is inert unless you
+set `P4A_WHEELHOUSE`, in which case pip resolves from that directory and uses no
+index at all. It exists because a container can reach an index so slowly that the
+fetch stalls rather than fails, which looks like a slow build rather than a
+broken one — compare host and container timings on the same URL before blaming a
+recipe. With the variable unset the option list is what upstream passes, and a
+full build was verified that way.
 ```
 
 It is idempotent, prints what it did, and asserts that p4a's HEAD is on

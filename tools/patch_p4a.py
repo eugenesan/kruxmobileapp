@@ -157,6 +157,41 @@ FIX_E_NEW = """        # Prepare base environment.
         base_env["PYTHONPATH"] = ctx.get_site_packages_dir(arch)
 """
 
+# Not a p4a defect, and not needed for a build with a working network.
+#
+# A container can reach an index so slowly that the fetch stalls rather than
+# fails, and a stalled index is indistinguishable from a slow build: the
+# requests just never return. It was seen here with podman reaching pypi at
+# ~240 s per request while the host fetched the same URL in 0.4 s, which is
+# worth knowing about independently -- if a build ever hangs on a download,
+# compare host and container timings before blaming the recipe.
+#
+# Setting P4A_WHEELHOUSE to a directory of wheels and sdists makes pip resolve
+# from there with no index at all. That is also a useful assertion in its own
+# right: the build either completes from the wheelhouse or names the package it
+# could not find, where an unreachable index just hangs.
+#
+# Applied only when the variable is set, so with it unset the option list is
+# byte-for-byte what upstream passes. Verified: a full build with it unset
+# completed with no --no-index and no extra fetches.
+FIX_F_OLD = """        # add platform tags
+        tags = PyProjectRecipe.get_wheel_platform_tags(arch.arch, self.ctx)
+        for tag in tags:
+            opts.append(f"--platform={tag}")
+"""
+FIX_F_NEW = """        # add platform tags
+        tags = PyProjectRecipe.get_wheel_platform_tags(arch.arch, self.ctx)
+        for tag in tags:
+            opts.append(f"--platform={tag}")
+
+        # Resolve from a local wheelhouse when one is given, and from nowhere
+        # else. Inert otherwise: see FIX_F in tools/patch_p4a.py for why this
+        # exists and when to reach for it.
+        wheelhouse = environ.get("P4A_WHEELHOUSE")
+        if wheelhouse:
+            opts.extend(["--no-index", "--find-links", wheelhouse])
+"""
+
 
 def patch(path, old, new, label, anchor_check, count=1):
     """Apply one replacement, reporting whether it landed or was already there."""
@@ -256,6 +291,9 @@ def main():
     rc |= patch(BUILD, FIX_E_OLD, FIX_E_NEW,
                 "E: stopped self-upgrading pip in the polluted-PYTHONPATH venv",
                 "there is\n        # nothing to gain from upgrading it here.")
+    rc |= patch(RECIPE, FIX_F_OLD, FIX_F_NEW,
+                "F: pip resolves from the local wheelhouse when one is given",
+                '--find-links", wheelhouse')
     return rc
 
 
