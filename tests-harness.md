@@ -47,37 +47,82 @@ because the app deliberately implements a different platform.
 
 ### Why the upstream suite cannot be a gate
 
-**The app's settings store implements only the Android half of the store API.**
-`AndroidStore` in `src/krux/settings.py` has no `delete` and no
-`update_file_location`. Upstream's device fixtures install a *Krux* device, so
-`board.config["type"]` is a Krux device type, `Setting.__set__` takes the
-upstream branch, and it calls a `store.delete` that does not exist. Nothing
-persists, and every write-then-read test fails.
+**Krux's device fixtures report a Krux device, so the app takes the upstream
+branch against hardware it never runs on.** `Setting.__set__` in
+`src/krux/settings.py` tests `board.config["type"] == "android"`. The fixtures
+install `m5stickv`, `amigo`, `dock` and so on, so the condition is false and the
+code falls through to the upstream path. Everything downstream of that is
+tested against the wrong platform, and fails for that reason alone.
 
-Forcing the board type to `"android"` fixes those — and breaks 540 geometry
-tests, because the geometry code is exactly the code the Android delta replaced.
-The two sets are mutually exclusive: there is no board configuration that
-satisfies both. Upstream's suite tests two platforms at once, and the app is
+This is worth stating precisely, because the obvious reading of the failures is
+wrong. The `AttributeError: 'AndroidStore' object has no attribute 'delete'`
+does **not** mean the app's store is incomplete in production. `Store` defines
+`delete` at `settings.py:257` and `update_file_location` at 276;
+`AndroidStore` (from 311) defines neither. The `elif value == default:` branch
+at line 101 that would call `store.delete` is only reachable when the board is
+*not* Android, so on a real phone it never executes. The error appears only
+because the fixtures put the app on the branch the app does not use.
+
+Forcing `board.config["type"]` to `"android"` fixes those — and breaks 540
+geometry tests, because the geometry code is exactly the code the Android delta
+replaced. The two sets are mutually exclusive: there is no board configuration
+that satisfies both. Upstream's suite tests two platforms at once, and the app is
 only one of them.
 
-So the honest number is not "188 failures to fix". It is: 187 of those 188 are
-in files that carry a recorded Android modification, and one
-(`tests/pages/test_input.py::test_invalid_touch_delimiter`) is transitive
-through `touch.py`, whose Android modification comments out the delimiter
-bounds checks. The runner reports exactly this split, from the MANIFEST, so the
-number can be re-derived rather than taken on trust.
+### The numbers, and what they mean
 
-**Three tests hang, and one of them eats 12 GB.** `test_encrypt_save_error_exist`,
-`test_encrypt_save_error` and `test_encrypt_to_qrcode_ecb_ui` all reach
-`CameraEntropy.capture()`, whose `while True` waits for a button press that the
-fixture's finite button sequence has already spent. `unittest.mock` records
-every call made inside that loop, so the hang is unbounded memory growth too:
-roughly 12.5 GB, at which point the OOM killer takes out the shell. The runner
-deselects them by name and `tools/krux_test_harness.py` caps peak RSS as a
-backstop. **These have not been diagnosed.** They are consistent with the
-Android flow reaching an entropy wait that upstream does not, which would be a
-real behavioural difference worth knowing about, but the harness cannot tell a
-fixture mismatch from a real one. `DEVICE-TESTING.md` covers the manual check.
+```
+app        189 failed, 1142 passed, 3 deselected, 1 xfailed, 1 error   92s
+baseline     3 failed, 1329 passed, 3 deselected, 1 xfailed            92s
+```
+
+Split by the MANIFEST, the app's 189 are:
+
+- **130** in files carrying a recorded Android modification
+- **59** in files that do not, all downstream of the same fixture mismatch
+
+Those 59 are not one bug. Re-running them individually gives four distinct
+signatures, all rooted in the board type being a Krux device:
+
+| signature | count | root |
+|---|---|---|
+| `AttributeError: 'AndroidStore' object has no attribute 'delete'` | 24 | upstream branch, so writes are no-ops and validations never run |
+| `draw_hcentered_text does not contain all of (call('below cave'…))` | 24 | the app's portrait-first layout differs from the geometry the tests assume |
+| `<= not supported between int and MagicMock` | 14 | `display.py:322`, `_asian_chars_per_line()` returns a MagicMock because the numeric `lcd` the Android display reads is not installed |
+| `save_file` / `print_string` / `write` not called | 13 | SD-card and printer paths that the app does not have |
+
+None is a regression from the sync, and none is fixable without lying to the
+fixtures. The right disposition is to record them as expected rather than chase
+them. The runner derives the split from the MANIFEST on every run, so the number
+can be re-derived rather than taken on trust — and a *new* failure in a file the
+MANIFEST does not list is the signal worth stopping for.
+
+Two earlier claims in this file were wrong and are corrected here: the failures
+were described as "187 of 188", and the cause was described as the app's store
+being incomplete rather than the fixtures selecting the wrong branch. Both
+figures come from the run above.
+
+**Three tests allocate without bound, and one of them is fatal to the host.**
+`test_encrypt_save_error_exist`, `test_encrypt_save_error` and
+`test_encrypt_to_qrcode_ecb_ui` all reach `CameraEntropy.capture()`, whose
+`while True` waits for a button press that the fixture's finite button sequence
+has already spent. `unittest.mock` records every call made inside that loop, so
+the hang is unbounded memory growth as well.
+
+Measured individually, each of the three passes 2.5 GB in under 30 seconds. Run
+together they reach ~12.5 GB, which on a 15 GB host is not a slow run but the
+kernel OOM killer taking out unrelated processes. The runner deselects them by
+name, and `tools/krux_test_harness.py` caps peak RSS and interrupts any test
+that overruns, as a backstop for anything not on that list.
+
+With the deselect in place the whole suite peaks at **216 MB** and finishes in
+92 seconds per side, so the harness is cheap to run. The caps matter because the
+failure mode is severe rather than because the suite normally needs the memory.
+
+**These remain undiagnosed.** They are consistent with the Android flow reaching
+an entropy wait that upstream does not, which would be a real behavioural
+difference worth knowing about, but the harness cannot tell a fixture mismatch
+from a real one. `DEVICE-TESTING.md` covers the manual check.
 
 ## What the harness needs, and what it does not touch
 

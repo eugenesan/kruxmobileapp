@@ -65,14 +65,15 @@ discards upstream changes to those files wholesale, so a security fix landing in
 failure is invisible and permanent.
 
 **Do nothing and rely on the test suite.** The suite cannot do this job. Against
-the app tree it reports 1143 passed / 188 failed, and all 188 trace to the Android
-modifications. It is a useful regression net but it is not a merge checker: it
-tells you behaviour changed, not whether the change was intended, and it cannot
-distinguish "the Android mod is doing its job" from "upstream's fix got lost".
-It cannot be made into a gate, either — `tests-harness.md` has the argument, and
-it comes down to `AndroidStore` implementing only the Android half of the store
-API, which makes upstream's write-then-read tests and its geometry tests mutually
-exclusive.
+the app tree it reports 1142 passed / 189 failed; 130 of the failures are in
+files carrying a recorded Android modification and 59 are not, all downstream of
+the fixtures reporting a Krux device. It is a useful regression net but it is
+not a merge checker: it tells you behaviour changed, not whether the change was
+intended, and it cannot distinguish "the Android mod is doing its job" from
+"upstream's fix got lost". It cannot be made into a gate, either —
+`tests-harness.md` has the argument, and it comes down to the fixtures reporting
+a Krux device, which makes upstream's write-then-read tests and its geometry
+tests mutually exclusive.
 
 ## Suggested workflow for a sync
 
@@ -109,19 +110,20 @@ it is not a gate.
 python3 tools/run_krux_tests.py --krux ../krux
 ```
 
-It is **not** a gate, and cannot be made into one. `AndroidStore` in
-`settings.py` implements only the Android half of the store API, so under
-Krux's device fixtures `Setting.__set__` calls a `store.delete` that does not
-exist, nothing persists, and every write-then-read test fails. Forcing
-`board.config["type"]` to `android` fixes those and breaks 540 geometry tests —
-the two sets are mutually exclusive, because upstream's suite tests two
-platforms and this app is one of them. `verify` above is the gate; this is
-informational, and its value is in the unexplained-failure count.
+It is **not** a gate, and cannot be made into one. Krux's device fixtures report
+a Krux device, so `Setting.__set__` in `settings.py` takes the upstream branch
+and the app is tested against hardware it never runs on. Forcing
+`board.config["type"]` to `android` fixes the store tests and breaks 540
+geometry tests — the two sets are mutually exclusive, because upstream's suite
+tests two platforms and this app is one of them. `verify` above is the gate;
+this is informational, and its value is in the unexplained-failure count. See
+`tests-harness.md` for the current figures and the four distinct signatures
+among them.
 
 **The gap worth closing:** there is no automated test for the Android delta
 itself. A focused suite over the 21 modified files — the clipboard path, the
 `JsonStore` round trip, the QR version cap — is a few dozen tests and would be
-worth more than the ~1143 that do pass. `tools/verify_sensor_stats.py` covers
+worth more than the ~1140 that do pass. `tools/verify_sensor_stats.py` covers
 one of them today.
 
 ## Known divergence, documented rather than fixed

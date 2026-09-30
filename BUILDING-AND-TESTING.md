@@ -231,18 +231,24 @@ python3 tools/run_krux_tests.py --krux ../krux
 
 **It is not a gate, and cannot be made into one.** Upstream's suite tests two
 platforms; this app is one of them. `AndroidStore` implements only the Android
-half of the store API, so under Krux's device fixtures writes silently fail, and
-forcing the board type to fix those breaks 540 geometry tests. The two sets are
-mutually exclusive. `krux_delta.py verify` is the gate; this is informational,
-and its value is in the unexplained-failure count.
+Krux's device fixtures report a Krux device, so the app is tested against
+hardware it never runs on, and forcing the board type to fix that breaks 540
+geometry tests. The two sets are mutually exclusive. `krux_delta.py verify` is
+the gate; this is informational, and its value is in the unexplained-failure
+count.
 
-The harness is memory-hungry by design of the code under test. Three tests reach
+**Memory is not a constraint, but the caps are load-bearing.** Three tests reach
 `CameraEntropy.capture()`, whose `while True` waits for a button press the
 fixture has already spent, while `unittest.mock` records every call made inside
-the loop: `test_encrypt_save_error_exist` alone was measured at 4.9 GB in under
-30 seconds. The runner deselects those three by name, and the plugin caps peak
-RSS and interrupts any test that overruns. **Run it on a machine that can
-absorb a few gigabytes**, and do not run it concurrently with a device session.
+the loop. Each passes 2.5 GB in under 30 seconds; together they reach ~12.5 GB,
+which on a 15 GB host is the kernel OOM killer rather than a slow run. The
+runner deselects them by name, and the plugin caps peak RSS and interrupts any
+test that overruns as a backstop.
+
+With those in place the suite is cheap: **216 MB peak, 92 seconds per side.**
+Run it detached so a dropped shell does not lose it. Do not run it concurrently
+with a device session — not because of memory, but because both drive the same
+host hard enough to make timing-sensitive results untrustworthy.
 
 `tests-harness.md` covers the harness in detail and the argument for why the
 suite cannot be a blanket gate.
