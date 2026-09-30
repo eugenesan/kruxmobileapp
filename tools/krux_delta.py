@@ -33,8 +33,24 @@ REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 KRUX = os.path.join(REPO, "src", "krux")
 DELTA_DIR = os.path.join(REPO, "tools", "krux-delta")
 MANIFEST = os.path.join(DELTA_DIR, "MANIFEST")
+
+# Files whose divergence from upstream is intentional and not worth a patch.
+# VERSION is a release identity string, not code: the app's reads
+# "26.08.0.unified-sighash.A1" where upstream reads "26.08.0", and it changes
+# every time the app is released. Recording that as a delta would mean
+# re-recording a patch on each version bump, and the gate would be asserting
+# something nobody wants asserted.
+#
+# Excluded from BOTH directions on purpose: not checked against a patch, and not
+# reported as unrecorded drift. A file listed here is genuinely unverified, so it
+# is printed on every run rather than being a silent hole -- and if one ever grows
+# real Android modifications, `record` will say so and the entry should go.
+UNVERIFIED = {
+    "metadata.py": "VERSION is a release string, not logic; re-recorded on every "
+                   "version bump. Keep this empty of real modifications.",
+}
 KRUX_REPO = os.environ.get("KRUX_REPO", "/home/user/Develop/src/krux-sighash/krux")
-DEFAULT_REF = "krux-sighash-noknots-min"
+DEFAULT_REF = "unified-sighash-noknots-min"
 
 
 def git(repo, *args):
@@ -157,9 +173,13 @@ def cmd_verify(ref):
         raise SystemExit("no recorded delta; run `krux_delta.py record %s` first" % ref)
 
     problems = []
-    rels = sorted(r[len(DELTA_DIR) + 1:-len(".patch")].replace(os.sep, "/")
-                  for r in glob.glob(os.path.join(DELTA_DIR, "**", "*.patch"),
-                                     recursive=True))
+    all_rels = sorted(r[len(DELTA_DIR) + 1:-len(".patch")].replace(os.sep, "/")
+                      for r in glob.glob(os.path.join(DELTA_DIR, "**", "*.patch"),
+                                         recursive=True))
+    # A stale patch for an excluded file is dropped rather than applied, so the
+    # exclusion survives even if the patch file is left behind.
+    rels = [r for r in all_rels if r not in UNVERIFIED]
+    stale = [r for r in all_rels if r in UNVERIFIED]
     patched = set()
 
     for rel in rels:
@@ -190,7 +210,7 @@ def cmd_verify(ref):
 
     # anything differing from upstream that is not in the delta is unrecorded drift
     for rel in list_krux_files(KRUX):
-        if rel in patched:
+        if rel in patched or rel in UNVERIFIED:
             continue
         try:
             up = upstream_bytes(ref, rel)
@@ -199,6 +219,12 @@ def cmd_verify(ref):
         if local_bytes(rel) != up:
             problems.append("src/krux/%s differs from %s but has no recorded delta"
                             % (rel, ref))
+
+    if stale:
+        print("  note: ignoring %d stale patch(es) for excluded file(s): %s"
+              % (len(stale), ", ".join(stale)))
+    for rel, why in sorted(UNVERIFIED.items()):
+        print("  note: %s is excluded from verification -- %s" % (rel, why))
 
     if problems:
         print("  FAIL: %d problem(s) against %s" % (len(problems), ref))

@@ -6,7 +6,7 @@ release, both `arm64-v8a` and `armeabi-v7a` present).
 Two things changed at once, so the tests below separate them deliberately:
 
 - **the Krux update** — `src/krux` moved from the pre-sync tree to
-  `krux-sighash-noknots-min` plus Android mods, adding the unified opt-in
+  `unified-sighash-noknots-min` plus Android mods, adding the unified opt-in
   signature hash and dropping silent payments
 - **the build** — the numpy→Pillow change in `mocks/sensor.py`, five p4a patches,
   a `pyqrcode` recipe

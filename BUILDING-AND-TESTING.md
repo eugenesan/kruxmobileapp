@@ -85,7 +85,7 @@ considered good.
 
 ```bash
 # 1. the sync gate. Is src/krux exactly upstream + our 21 recorded edits?
-python3 tools/krux_delta.py verify krux-sighash-noknots-min
+python3 tools/krux_delta.py verify unified-sighash-noknots-min
 
 # 2. do the MicroPython imports src/krux makes have shims that supply them?
 python3 tools/verify_mock_surface.py
