@@ -119,6 +119,17 @@ def build(work, krux, ref):
         os.remove(baseline_src)
     os.symlink(baseline, baseline_src)
 
+    # A second layout for the baseline that mirrors the app's: a directory whose
+    # name is `src` and which holds the krux package. Krux's tests import both
+    # `krux.…` and `src.krux.…`, so the baseline needs both spellings, and its
+    # `src.krux` has to be *its own* tree -- pointing this at the app would make
+    # the baseline test the app and pass for the wrong reason.
+    baseline_pkg = os.path.join(work, "baseline-pkg")
+    if os.path.islink(baseline_pkg) or os.path.exists(baseline_pkg):
+        os.remove(baseline_pkg)
+    os.makedirs(baseline_pkg)
+    os.symlink(os.path.join(baseline, "krux"), os.path.join(baseline_pkg, "krux"))
+
     # ur / urtypes from the app, in a directory of their own so that the
     # krux tree's own vendor/ copies cannot merge into the same package
     urprov = os.path.join(work, "urprov")
@@ -135,14 +146,14 @@ def build(work, krux, ref):
                     shutil.rmtree(os.path.join(dirpath, d))
                     dirnames.remove(d)
 
-    return harness, baseline_src
+    return harness, baseline_src, baseline_pkg
 
 
 # --- running -----------------------------------------------------------------
 
 
 def run_suite(work, harness, srcdir, label, python, extra, memcap_mb,
-              include_hanging):
+              include_hanging, pkg_root=None):
     cmd = [python, "-m", "pytest", "tests", "-q",
            "-p", "no:cacheprovider", "-p", "krux_test_harness",
            "--no-header", "-rf"]
@@ -160,13 +171,26 @@ def run_suite(work, harness, srcdir, label, python, extra, memcap_mb,
 
     # In order: the tree under test, the app's ur/urtypes, the stubs, and
     # TOOLS so that `-p krux_test_harness` resolves by name.
+    #
+    # pkg_root, when given, is the directory *containing* the krux package's
+    # parent. Two of Krux's test files import through a literal package prefix
+    # -- `from src.krux.rotary import RotaryEncoder` -- which resolves only when
+    # that directory is on the path. The app never does this; it is a test-side
+    # convention, and without the entry those tests fail with
+    # `ModuleNotFoundError: No module named 'src'`, which reads like a sync
+    # defect and is not one.
+    #
+    # It must be per-side. Passing APP unconditionally would leave the baseline
+    # resolving `src.krux` to the *app's* src, so the baseline would quietly
+    # compare the app against itself and every such test would pass for the
+    # wrong reason. The baseline gets a directory of its own that holds only its
+    # own krux package.
+    path = [srcdir, os.path.join(work, "urprov"),
+            os.path.join(TOOLS, "test-stubs"), TOOLS]
+    if pkg_root:
+        path.insert(1, pkg_root)
     env = dict(os.environ)
-    env["PYTHONPATH"] = os.pathsep.join(
-        [srcdir,
-         os.path.join(work, "urprov"),
-         os.path.join(TOOLS, "test-stubs"),
-         TOOLS]
-    )
+    env["PYTHONPATH"] = os.pathsep.join(path)
     env["MEMCAP_MB"] = str(memcap_mb)
 
     print("== %s" % label)
@@ -279,19 +303,23 @@ def main():
     print("building harness in %s" % work)
     print("  ref:     %s" % args.ref)
     print("  python:  %s" % python)
-    harness, baseline_src = build(work, krux, args.ref)
+    harness, baseline_src, baseline_pkg = build(work, krux, args.ref)
     print("  tests:   %d files" % len(
         [f for f in os.listdir(os.path.join(harness, "tests")) if f.endswith(".py")]))
     print()
 
+    # pkg_root is the directory holding the package's parent, so that both
+    # `krux.x` and `src.krux.x` resolve to the tree under test. Each side gets
+    # its own; see run_suite.
     results = {}
-    for label, srcdir in (("app", os.path.join(APP, "src")),
-                          ("baseline", baseline_src)):
+    for label, srcdir, pkg_root in (
+            ("app", os.path.join(APP, "src"), APP),
+            ("baseline", baseline_src, baseline_pkg)):
         if args.only and label != args.only:
             continue
         rc, out = run_suite(work, harness, srcdir, label, python,
                             args.pytest_args, args.memcap_mb,
-                            args.include_hanging)
+                            args.include_hanging, pkg_root=pkg_root)
         log = os.path.join(work, "log-%s.txt" % label)
         with open(log, "w", encoding="utf8") as f:
             f.write(out)
