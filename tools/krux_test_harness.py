@@ -9,7 +9,7 @@ recorded Android delta, and everything else -- ``tests/``, ``simulator/``,
 difference between a baseline run and an app run is then attributable to the
 krux package alone.
 
-Three accommodations are needed, and all three are gaps in the CPython test
+Four accommodations are needed, and all four are gaps in the CPython test
 environment rather than claims about the app.
 
 lcd gets real numbers
@@ -27,6 +27,17 @@ settings.json is reset around every test
     from the previous test. Without this, the app's run would drift for a
     reason that has nothing to do with the sync.
 
+seeds.json is reset, and seeded from whatever the test injected
+    The same reasoning, plus a second difference. Upstream's encrypted seeds
+    are a dict read from the flash file through ``open``, so a test seeds them
+    with ``patch("krux.encryption.open", mock_open(read_data=SEEDS_JSON))``.
+    The app reads a real file through a ``JsonStore`` and never calls ``open``,
+    so that patch did nothing: the store came up empty whatever the test
+    injected, and the assertions about its contents failed against an empty
+    store. The store is therefore taught to read the injection -- at the moment
+    it is constructed, which is inside the test's own ``with`` block and so
+    later than any fixture could have looked.
+
 each test is interrupted if it overruns, and peak RSS is capped
     Three tests in the app tree reach ``CameraEntropy.capture()``, whose
     ``while True`` waits for a button press the fixture has already spent.
@@ -41,17 +52,19 @@ each test is interrupted if it overruns, and peak RSS is capped
     next test boundary never arrives. Set ``KRUX_TEST_TIMEOUT=0`` to disable
     the timeout and ``MEMCAP_MB=0`` to disable the cap.
 
-The first two were originally applied by patching Krux's own ``conftest.py``.
+The first three were originally applied by patching Krux's own ``conftest.py``.
 That is not how it works any more: the patch depended on anchors in a file that
 changes upstream, and a moved anchor meant a silently unpatched harness. Two
 hooks reach the same state without the harness editing the code it is testing.
 """
 
+import json
 import os
 import resource
 import signal
 import sys
 import threading
+import unittest.mock
 
 import pytest
 
@@ -98,8 +111,109 @@ def fresh_android_settings_file():
     if os.path.exists(path):
         os.remove(path)
     yield
-    if os.path.exists(path):
+    # Guarded, not exists-then-remove: a test's own teardown can delete this
+    # file first, and the check and the removal are not atomic. The check also
+    # becomes wrong once another autouse fixture changes the teardown order, so
+    # tolerate the file being gone rather than fail a test that already passed.
+    try:
         os.remove(path)
+    except FileNotFoundError:
+        pass
+
+
+# --- seeds.json ----------------------------------------------------------------
+
+# Where the app's MnemonicStorage keeps its encrypted seeds. Upstream keeps them
+# in a dict built by reading the flash file through `open`, so a test seeds them
+# with `patch("krux.encryption.open", mock_open(read_data=SEEDS_JSON))` -- inside
+# the test body, in a `with` block. The app reads a real file through a JsonStore
+# and never calls `open`, so that patch is inert: the store comes up empty
+# whatever the test injected, and the assertions about its contents fail against
+# an empty store.
+#
+# A fixture cannot help, because the patch is installed after every fixture has
+# run. So the store itself is taught to read the injection: when `open` is a mock
+# carrying `read_data`, the store is built from that instead of from the file.
+# The tests need no change, and the two spellings of "the stored seeds" cannot
+# drift apart.
+#
+# The file is relative, so it resolves against the process's working directory --
+# the harness root, one level above. It is still reset per test, for the same
+# reason settings.json is: upstream's storage is per-test by construction and the
+# app's is a real file, so without a reset one test's mnemonics are the next
+# test's.
+SEEDS_FILE = "../seeds.json"
+
+
+def _injected_seeds():
+    """The data a test patched into `krux.encryption.open`, or None.
+
+    `mock_open` has no `read_data` attribute: the data is what the handle it
+    returns gives back from `read()`, which is also how upstream consumes it.
+    """
+    encryption = sys.modules.get("krux.encryption")
+    if encryption is None:
+        return None
+    opener = getattr(encryption, "open", None)
+    if not isinstance(opener, unittest.mock.Mock):
+        return None
+    try:
+        read_data = opener().read()
+    except (TypeError, ValueError):
+        return None
+    if not isinstance(read_data, str):
+        return None
+    # Mirrors upstream's _load_mnemonics: a document that is not a dict is
+    # corrupt storage, and upstream keeps it as-is for the caller to reject.
+    try:
+        return json.loads(read_data)
+    except ValueError:
+        return read_data
+
+
+@pytest.fixture(autouse=True)
+def fresh_android_seeds_file(mp_modules, monkeypatch):
+    """Point the app's seeds store at whatever the test injected through `open`.
+
+    Runs after `mp_modules`, which is what makes `krux.encryption` importable.
+    The replacement delegates to the real JsonStore for everything except the
+    initial read, so caching and flushing behave exactly as they do for the app.
+    """
+    from kivy.storage import jsonstore  # noqa: PLC0415
+
+    real_store = jsonstore.JsonStore
+
+    class Store(real_store):
+        def __init__(self, filename=None, *args, **kwargs):
+            # Read the injection here, not when the fixture was set up: the
+            # test installs the patch inside its own body, so at fixture time
+            # `open` is still the builtin. MnemonicStorage is constructed
+            # inside the `with` block, which is what makes this the moment the
+            # data is available.
+            data = _injected_seeds()
+            if data is not None and filename == SEEDS_FILE:
+                with open(SEEDS_FILE, "w", encoding="utf8") as f:
+                    json.dump(data, f)
+            super().__init__(filename, *args, **kwargs)
+
+    monkeypatch.setattr(jsonstore, "JsonStore", Store)
+    # krux.encryption does `from kivy.storage.jsonstore import JsonStore`, so
+    # patching the source module is not enough -- the name is already bound in
+    # the importing module. It may not be imported yet, hence the lookup by name.
+    encryption = sys.modules.get("krux.encryption")
+    if encryption is not None and hasattr(encryption, "JsonStore"):
+        monkeypatch.setattr(encryption, "JsonStore", Store)
+
+    if os.path.exists(SEEDS_FILE):
+        os.remove(SEEDS_FILE)
+    yield
+    # A relative path against a shared working directory, and the suite runs
+    # with xdist, so another worker's file can appear between the check and the
+    # removal. Tolerate its absence rather than failing a test that passed.
+    try:
+        os.remove(SEEDS_FILE)
+    except FileNotFoundError:
+        pass
 
 
 # --- per-test timeout --------------------------------------------------------
