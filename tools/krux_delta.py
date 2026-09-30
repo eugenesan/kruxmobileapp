@@ -50,7 +50,7 @@ UNVERIFIED = {
                    "version bump. Keep this empty of real modifications.",
 }
 KRUX_REPO = os.environ.get("KRUX_REPO", "/home/user/Develop/src/krux-sighash/krux")
-DEFAULT_REF = "unified-sighash-noknots-min"
+DEFAULT_REF = "unified-sighash-single-min-noknots"
 
 
 def git(repo, *args):

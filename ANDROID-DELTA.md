@@ -33,8 +33,8 @@ Three parts. Only the third is the interesting one.
    `src/krux` byte for byte. Drift in either direction is a hard failure.
 
 ```bash
-tools/krux_delta.py record unified-sighash-noknots-min   # snapshot the delta
-tools/krux_delta.py verify unified-sighash-noknots-min   # assert no drift
+tools/krux_delta.py record unified-sighash-single-min-noknots   # snapshot the delta
+tools/krux_delta.py verify unified-sighash-single-min-noknots   # assert no drift
 tools/krux_delta.py report                           # what is modified, and why
 ```
 
@@ -79,14 +79,14 @@ tests mutually exclusive.
 
 ```bash
 # 1. re-record against the new upstream ref
-tools/krux_delta.py record unified-sighash-noknots-min
+tools/krux_delta.py record unified-sighash-single-min-noknots
 
 # 2. read the report; for every file whose delta changed size, read the patch
 tools/krux_delta.py report
 git diff --stat HEAD~1 -- tools/krux-delta
 
 # 3. verify -- this is the gate
-tools/krux_delta.py verify unified-sighash-noknots-min
+tools/krux_delta.py verify unified-sighash-single-min-noknots
 ```
 
 If `verify` fails, the failure names the file and why. Two distinct messages:

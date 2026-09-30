@@ -11,7 +11,7 @@ a gate.
 ## 1. Structural — `tools/krux_delta.py verify` — this is the gate
 
 ```
-python3 tools/krux_delta.py verify unified-sighash-noknots-min
+python3 tools/krux_delta.py verify unified-sighash-single-min-noknots
 ```
 
 Asserts, byte for byte, that `src/krux` is exactly the named Krux ref plus the

@@ -271,7 +271,7 @@ def main():
         description="Run Krux's suite against this app and against a baseline ref.")
     ap.add_argument("--krux", required=True,
                     help="path to a Krux clone, with its .venv present")
-    ap.add_argument("--ref", default="unified-sighash-noknots-min",
+    ap.add_argument("--ref", default="unified-sighash-single-min-noknots",
                     help="Krux ref to take tests/, simulator/ and the baseline from")
     ap.add_argument("--python", default=None,
                     help="interpreter (default: <krux>/.venv/bin/python)")
