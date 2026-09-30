@@ -147,7 +147,14 @@ def run_suite(work, harness, srcdir, label, python, extra, memcap_mb,
            "-p", "no:cacheprovider", "-p", "krux_test_harness",
            "--no-header", "-rf"]
     if not include_hanging:
-        cmd += ["--deselect"] + HANGING
+        # One --deselect per test. `+= ["--deselect"] + HANGING` builds a single
+        # flag with three values, and argparse honours only the first: the other
+        # two become positional path arguments, so exactly one test is excluded
+        # and the rest run. Those two reach CameraEntropy.capture() and allocate
+        # until the process is killed, which is how this was found -- a run that
+        # reported "1 deselected" and then hit 13.5 GB.
+        for nodeid in HANGING:
+            cmd += ["--deselect", nodeid]
     for item in extra:
         cmd += item.split()
 
@@ -211,13 +218,24 @@ def classify(app_failures, modified):
 
 
 def _touches(nodeid, modified):
+    """Does this failing test live in a file that carries an Android delta?
+
+    tests/pages/test_x.py -> pages/x.py, by dropping the leading "test_" and
+    keeping the ".py" that is already there. Appending another one gave
+    "display.py.py", which matches nothing, so every failure was reported as
+    unexplained -- including the 21 in test_display.py, whose file *is* modified.
+    A classifier that cannot attribute anything is worse than none: it reads as
+    192 unexplained regressions when the truth is a handful.
+    """
     if not modified:
         return False
     parts = nodeid.split("::", 1)[0].split("/")
-    # tests/pages/test_x.py -> pages/x.py
     if parts[0] != "tests" or not parts[-1].startswith("test_"):
         return False
-    rel = "/".join(parts[1:-1] + [parts[-1][len("test_"):] + ".py"])
+    leaf = parts[-1]
+    if not leaf.endswith(".py"):
+        return False
+    rel = "/".join(parts[1:-1] + [leaf[len("test_"):]])
     return rel in modified
 
 
